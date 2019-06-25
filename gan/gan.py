@@ -56,18 +56,22 @@ batch_size=50
 
 # Layers
 
-def residual_block(filter_name1,filter_name2,model,in_dim,out_dim,in_tensor):
+def residual_block(filter_name1,bias_name1,filter_name2,bias_name2,model,in_dim,out_dim,in_tensor):
 	with tf.variable_scope('',reuse=tf.AUTO_REUSE):
-		filter1 = tf.get_variable(filter_name1,collections=[model],trainable=True,shape=[16,encode_length,in_dim,5])
-		filter2 = tf.get_variable(filter_name2,collections=[model],trainable=True,shape=[16,encode_length,5,out_dim])
+		filter1 = tf.get_variable(filter_name1,collections=[model],trainable=True,shape=[5,in_dim,64])
+		bias1 = tf.get_variable(bias_name1,collections=[model],trainable=True,shape=[max_size,64])
+		filter2 = tf.get_variable(filter_name2,collections=[model],trainable=True,shape=[5,64,out_dim])
+		bias2 = tf.get_variable(bias_name2,collections=[model],trainable=True,shape=[max_size,out_dim])
 
 		x = in_tensor
-		x = tf.nn.relu(x)
+		x = tf.nn.leaky_relu(x)
 		
-		x = tf.nn.conv2d(x,filter=filter1,padding='SAME',strides=[1,1,1,1])
+		x = tf.nn.conv1d(x,filters=filter1,padding='SAME',stride=1)
+		x = tf.add(x,bias1)
 		
-		x = tf.nn.relu(x)
-		x = tf.nn.conv2d(x,filter=filter2,padding='SAME',strides=[1,1,1,1])
+		x = tf.nn.leaky_relu(x)
+		x = tf.nn.conv1d(x,filters=filter2,padding='SAME',stride=1)
+		x = tf.add(x,bias2)
 
 	return x+0.3*in_tensor
 	
@@ -80,52 +84,50 @@ def dense(matrix,bias,model,in_dim,out_dim,in_tensor):
 	return tf.matmul(in_tensor,W) + b
 
 
-def conv(filter_name,model,filter_shape,in_tensor):
+def conv(filter_name,bias_name,model,filter_shape,in_tensor):
 	with tf.variable_scope('',reuse=tf.AUTO_REUSE):
 		filt = tf.get_variable(filter_name,collections=[model],trainable=True,shape=filter_shape)
-
-	return tf.nn.conv2d(in_tensor,filter=filt,padding='SAME',strides=[1,1,1,1])
+		bias = tf.get_variable(bias_name,collections=[model],trainable=True,shape=[max_size,filter_shape[-1]])
+		
+	out = tf.nn.conv1d(in_tensor,filters=filt,padding='SAME',stride=1)
+	out = tf.add(out,bias)
+	return out
 	
 # Generator
 
 def generator(seed):
 	seed = tf.reshape(seed,(batch_size,100))
 	
-	seed2 = dense('generator.dense1.matrix','generator.dense1.bias','generator',100,max_size*encode_length,seed)
-	seed2 = tf.nn.relu(seed2)
+	seed2 = dense('generator.dense1.matrix','generator.dense1.bias','generator',100,max_size*64,seed)
+	seed2 = tf.nn.leaky_relu(seed2)
+	seed2 = tf.reshape(seed2,[batch_size,max_size,64])
 	
-	seed2 = tf.reshape(seed2,(batch_size,max_size,encode_length,1))
+	x = residual_block('generator.res1.filter1','generator.res1.bias1','generator.res1.filter2','generator.res1.bias2','generator',64,64,seed2)
+	x = residual_block('generator.res2.filter1','generator.res2.bias1','generator.res2.filter2','generator.res2.bias2','generator',64,64,x)
+	x = residual_block('generator.res3.filter1','generator.res3.bias1','generator.res3.filter2','generator.res3.bias2','generator',64,64,x)
+	x = residual_block('generator.res4.filter1','generator.res4.bias1','generator.res4.filter2','generator.res4.bias2','generator',64,64,x)
+	x = residual_block('generator.res5.filter1','generator.res5.bias1','generator.res5.filter2','generator.res5.bias2','generator',64,64,x)
 
-	x = conv('generator.conv1.filter','generator',(16,encode_length,1,5),seed2)
-	x = tf.nn.relu(x)
+	x = conv('generator.conv1.filter','generator.conv1.bias','generator',(5,64,encode_length),x)
 	
-	x = residual_block('generator.res1.filter1','generator.res1.filter2','generator',5,5,x)
-	x = residual_block('generator.res2.filter1','generator.res2.filter2','generator',5,5,x)
-	x = residual_block('generator.res3.filter1','generator.res3.filter2','generator',5,5,x)
-
-	x = conv('generator.conv2.filter','generator',(16,encode_length,5,1),x)
-	
-	synthetic = tf.reshape(x,(batch_size,max_size,encode_length))
+	synthetic = tf.nn.softmax(x)
 	return synthetic
 
 # Discriminator
 
 def discriminator(sequence):
-	sequence2 = tf.reshape(sequence,(batch_size,max_size,encode_length,1))
-
-	x = conv('discriminator.conv1.filter','discriminator',(16,encode_length,1,5),sequence2)
-	x = tf.nn.relu(x)
+	x = conv('discriminator.conv1.filter','discriminator.conv1.bias','discriminator',(5,encode_length,64),sequence)
+	x = tf.nn.leaky_relu(x)
 	
-	x = residual_block('discriminator.res1.filter1','discriminator.res1.filter2','discriminator',5,5,x)
-	x = residual_block('discriminator.res2.filter1','discriminator.res2.filter2','discriminator',5,5,x)
-	x = residual_block('discriminator.res3.filter1','discriminator.res3.filter2','discriminator',5,5,x)
-	x = residual_block('discriminator.res4.filter1','discriminator.res4.filter2','discriminator',5,5,x)
-	x = residual_block('discriminator.res5.filter1','discriminator.res5.filter2','discriminator',5,5,x)
+	x = residual_block('discriminator.res1.filter1','discriminator.res1.bias1','discriminator.res1.filter2','discriminator.res1.bias1','discriminator',64,64,x)
+	x = residual_block('discriminator.res2.filter1','discriminator.res2.bias1','discriminator.res2.filter2','discriminator.res2.bias1','discriminator',64,64,x)
+	x = residual_block('discriminator.res3.filter1','discriminator.res3.bias1','discriminator.res3.filter2','discriminator.res3.bias1','discriminator',64,64,x)
+	x = residual_block('discriminator.res4.filter1','discriminator.res4.bias1','discriminator.res4.filter2','discriminator.res4.bias1','discriminator',64,64,x)
+	x = residual_block('discriminator.res5.filter1','discriminator.res5.bias1','discriminator.res5.filter2','discriminator.res5.bias1','discriminator',64,64,x)
 	
-	x = tf.reshape(x,(batch_size,max_size*encode_length*5))
+	x = tf.reshape(x,(batch_size,max_size*64))
 	
-	output = dense('discriminator.dense1.matrix','discriminator.dense1.bias','discriminator',max_size*encode_length*5,1,x)
-	output = tf.nn.sigmoid(output)
+	output = dense('discriminator.dense1.matrix','discriminator.dense1.bias','discriminator',max_size*64,1,x)
 	return output
 	
 ### Constructing the loss function
@@ -162,16 +164,6 @@ disc_loss = tf.add(diff,tf.multiply(tf.constant(10.),score),name='disc_loss')
 # Generator wants fake sequences to be labeled 1
 gen_loss = - tf.reduce_mean(pred_fake,name='gen_loss')
 
-test = noise
-test = dense('generator.dense1.matrix','generator.dense1.bias','generator',100,max_size*encode_length,test)
-test = tf.nn.relu(test)
-
-test = tf.reshape(test,(batch_size,max_size,encode_length,1))
-
-test = conv('generator.conv1.filter','generator',(16,encode_length,1,5),test)
-test = tf.nn.relu(test)
-test = residual_block('generator.res1.filter1','generator.res1.filter2','generator',5,5,test)
-
 # For tracking using tensorboard
 
 a = tf.summary.scalar('discriminator_difference', diff)
@@ -198,32 +190,25 @@ sess.run(init)
 sess.run(tf.global_variables_initializer())
 print('############')
 print(np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()]))
-epochs=500
+epochs=10000
 
 for epoch in range(epochs):
 	print('\ngan17, epoch ',epoch)
 
 	
 	# Train discriminator
-	counter = 0
-	d_loss = np.infty
-	
-	while(counter < 10 or (d_loss > -0.9 and counter < 100)):
+	for i in range(5):
 		real = np.random.permutation(train_sequences_h1)[:batch_size].astype(np.float32)
 		noise_input = np.random.normal(0,1,(batch_size,100))
 		_,d_loss,grads = sess.run([train_discriminator,diff,grads_discriminator],feed_dict={real_images:real,noise:noise_input})
-		counter += 1
 		print("Training discriminator",d_loss)
-		
+			
 	# Train generator
-	counter = 0
-	g_loss = np.infty
-	while(counter < 10 or (g_loss > -0.9 and counter < 100)):
-		real = np.random.permutation(train_sequences_h1)[:batch_size].astype(np.float32)
-		noise_input = np.random.normal(0,1,(batch_size,100))
-		_,g_loss,grads = sess.run([train_generator,gen_loss,grads_generator],feed_dict={noise:noise_input})
-		counter += 1
-		print("Training generator",g_loss)
+
+	real = np.random.permutation(train_sequences_h1)[:batch_size].astype(np.float32)
+	noise_input = np.random.normal(0,1,(batch_size,100))
+	_,g_loss,grads = sess.run([train_generator,gen_loss,grads_generator],feed_dict={noise:noise_input})
+	print("Training generator",g_loss)
 
 	print("Generator loss: ",g_loss)
 	print("Discriminator loss: ",d_loss)
@@ -240,7 +225,7 @@ for epoch in range(epochs):
 	print(sequence_string)
 		
 	
-save_path = saver.save(sess,'/home/ceolson0/gan17.ckpt')
+# save_path = saver.save(sess,'/home/ceolson0/gan17.ckpt')
 
 sess.close()
 
@@ -249,7 +234,7 @@ sess.close()
 # ~ c_sequence = tf.keras.Input(shape=(max_size,encode_length))
 # ~ c_sequence2 = tf.keras.layers.Reshape((max_size,encode_length,1))(c_sequence)
 
-# ~ x = tf.keras.layers.Conv2D(64,(5,encode_length),activation=tf.nn.relu,padding='same')(c_sequence2)
-# ~ x = tf.keras.layers.Conv2D(64,(5,encode_length),activation=tf.nn.relu,padding='same')(x)
-# ~ x = tf.keras.layers.Conv2D(64,(5,encode_length),activation=tf.nn.relu)(x)
+# ~ x = tf.keras.layers.Conv2D(64,(5,encode_length),activation=tf.nn.leaky_relu,padding='same')(c_sequence2)
+# ~ x = tf.keras.layers.Conv2D(64,(5,encode_length),activation=tf.nn.leaky_relu,padding='same')(x)
+# ~ x = tf.keras.layers.Conv2D(64,(5,encode_length),activation=tf.nn.leaky_relu)(x)
 
