@@ -20,6 +20,7 @@ config.gpu_options.allow_growth = True
 config.log_device_placement = False
 
 sess = tf.Session(config=config)
+tf.keras.backend.set_session(sess)
 # ~ sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 
 ### Prep data
@@ -53,234 +54,81 @@ data_file = h5py.File('/home/ceolson0/Documents/test_fastas3.h5','r')
 train_sequences_h1 = data_file.get('sequences_cat').value
 data_file.close()
 
+train_sequences_h1_offset = []
+for i in range(len(train_sequences_h1)):
+	seq = []
+	for j in range(len(train_sequences_h1[0]) - 1):
+		seq.append(train_sequences_h1[i][j+1])
+	seq.append(EOM_VECTOR)
+	train_sequences_h1_offset.append(seq)
+train_sequences_h1_offset = np.array(train_sequences_h1_offset)
+
+
 max_size = len(train_sequences_h1[0])
 encode_length = len(train_sequences_h1[0][0])
 batch_size=500
 
 latent_dim = 100
 
-### Set up models
-
-# Layers
-
-def residual_block(filter_name1,filter_name2,model,in_dim,out_dim,in_tensor):
-	with tf.variable_scope('',reuse=tf.AUTO_REUSE):
-		filter1 = tf.get_variable(filter_name1,collections=[model],trainable=True,shape=[16,encode_length,in_dim,5])
-		filter2 = tf.get_variable(filter_name2,collections=[model],trainable=True,shape=[16,encode_length,5,out_dim])
-
-		x = in_tensor
-		x = tf.nn.relu(x)
-		
-		x = tf.nn.conv2d(x,filter=filter1,padding='SAME',strides=[1,1,1,1])
-		
-		x = tf.nn.relu(x)
-		x = tf.nn.conv2d(x,filter=filter2,padding='SAME',strides=[1,1,1,1])
-
-	return x+0.3*in_tensor
+def sample_from_latents(x):
+	means = x[:,:latent_dim]
+	log_vars = x[:,latent_dim:]
+	base = tf.keras.backend.random_normal(shape=[latent_dim,])
+	return means + tf.exp(log_vars) * base
 	
-def dense(matrix,bias,model,in_dim,out_dim,in_tensor):
-	with tf.variable_scope('',reuse=tf.AUTO_REUSE):
-		W = tf.get_variable(matrix,collections=[model],trainable=True,shape=[in_dim,out_dim])
-		b = tf.get_variable(bias,collections=[model],trainable=True,shape=[out_dim,])
-
+def custom_loss(latent_h_seeds,latent_c_seeds):
+	means_h = latent_h_seeds[:,:latent_dim]
+	log_vars_h = latent_h_seeds[:,latent_dim:]
 	
-	return tf.matmul(in_tensor,W) + b
-
-
-def conv(filter_name,model,filter_shape,in_tensor):
-	with tf.variable_scope('',reuse=tf.AUTO_REUSE):
-		filt = tf.get_variable(filter_name,collections=[model],trainable=True,shape=filter_shape)
-
-	return tf.nn.conv2d(in_tensor,filter=filt,padding='SAME',strides=[1,1,1,1])
+	means_c = latent_c_seeds[:,:latent_dim]
+	log_vars_c = latent_c_seeds[:,latent_dim:]
 	
-def lstm(model,
-		 input_matrix_vector, input_matrix_state, input_bias,
-		 output_matrix_vector, output_matrix_state, output_bias,
-		 forget_matrix_vector, forget_matrix_state, forget_bias,
-		 state_matrix_vector, state_matrix_state, state_bias,
-		 vector_dim, state_dim, in_tensor, hidden_state, state):
-	with tf.variable_scope('',reuse=tf.AUTO_REUSE):
-		W_i = tf.get_variable(input_matrix_vector,trainable=True,shape=[vector_dim,state_dim],collections=[model])
-		U_i = tf.get_variable(input_matrix_state,trainable=True,shape=[state_dim,state_dim],collections=[model])
-		b_i = tf.get_variable(input_bias,trainable=True,shape=[state_dim,],collections=[model])
-		
-		W_o = tf.get_variable(output_matrix_vector,trainable=True,shape=[vector_dim,state_dim],collections=[model])
-		U_o = tf.get_variable(output_matrix_state,trainable=True,shape=[state_dim,state_dim],collections=[model])
-		b_o = tf.get_variable(output_bias,trainable=True,shape=[state_dim,],collections=[model])
-		
-		W_f = tf.get_variable(forget_matrix_vector,trainable=True,shape=[vector_dim,state_dim],collections=[model])
-		U_f = tf.get_variable(forget_matrix_state,trainable=True,shape=[state_dim,state_dim],collections=[model])
-		b_f = tf.get_variable(forget_bias,trainable=True,shape=[state_dim,],collections=[model])
-		
-		W_s = tf.get_variable(state_matrix_vector,trainable=True,shape=[vector_dim,state_dim],collections=[model])
-		U_s = tf.get_variable(state_matrix_state,trainable=True,shape=[state_dim,state_dim],collections=[model])
-		b_s = tf.get_variable(state_bias,trainable=True,shape=[state_dim,],collections=[model])
+	kl_h = tf.reduce_mean(tf.square(means_h) + tf.exp(log_vars_h) - log_vars_h - 1.) * 0.25
+	kl_c = tf.reduce_mean(tf.square(means_c) + tf.exp(log_vars_c) - log_vars_c - 1.) * 0.25
+	kl = kl_h + kl_c
 	
-		
-	forget = tf.matmul(in_tensor,W_f) + tf.matmul(hidden_state,U_f) + b_f
-	forget = tf.nn.sigmoid(forget)
+	def loss(outs,labels):
+		return kl + tf.keras.backend.categorical_crossentropy(outs,labels)
 	
-	inpt = tf.matmul(in_tensor,W_i) + tf.matmul(hidden_state,U_i) + b_i
-	inpt = tf.nn.sigmoid(inpt)
+	return loss
 	
-	output_vector = tf.matmul(in_tensor,W_o) + tf.matmul(hidden_state,U_o) + b_o
-	output_vector = tf.nn.sigmoid(output_vector)
-	
-	new_state = tf.multiply(forget,hidden_state) + tf.nn.tanh(tf.matmul(in_tensor,W_s) + tf.matmul(state,U_s) + b_s)
-	new_hidden_state = tf.multiply(output_vector,new_state)
-	
-	return (new_hidden_state,new_state)
 
-def encoder(sequence):
-	def body(i,state):
-		output_vector,new_state = lstm('encoder',
-									   'encoder.lstm1.input_matrix_vector','encoder.lstm1.input_matrix_state','encoder.lstm1.input_bias',
-									   'encoder.lstm1.output_matrix_vector','encoder.lstm1.output_matrix_state','encoder.lstm1.output_bias',
-									   'encoder.lstm1.forget_matrix_vector','encoder.lstm1.forget_matrix_state','encoder.lstm1.forget_bias',
-									   'encoder.lstm1.state_matrix_vector','encoder.lstm1.state_matrix_state','encoder.lstm1.state_bias',
-									   encode_length, latent_dim*2, sequence[:,i,:], hidden_state, state)
-						   
-		output_vector,new_state = lstm('encoder',
-									   'encoder.lstm2.input_matrix_vector','encoder.lstm2.input_matrix_state','encoder.lstm2.input_bias',
-									   'encoder.lstm2.output_matrix_vector','encoder.lstm2.output_matrix_state','encoder.lstm2.output_bias',
-									   'encoder.lstm2.forget_matrix_vector','encoder.lstm2.forget_matrix_state','encoder.lstm2.forget_bias',
-									   'encoder.lstm2.state_matrix_vector','encoder.lstm2.state_matrix_state','encoder.lstm2.state_bias',
-									   latent_dim*2, latent_dim*2, output_vector, output_vector, new_state)
-						   
-		output_vector,new_state = lstm('encoder',
-									   'encoder.lstm3.input_matrix_vector','encoder.lstm3.input_matrix_state','encoder.lstm3.input_bias',
-									   'encoder.lstm3.output_matrix_vector','encoder.lstm3.output_matrix_state','encoder.lstm3.output_bias',
-									   'encoder.lstm3.forget_matrix_vector','encoder.lstm3.forget_matrix_state','encoder.lstm3.forget_bias',
-									   'encoder.lstm3.state_matrix_vector','encoder.lstm3.state_matrix_state','encoder.lstm3.state_bias',
-									   latent_dim*2, latent_dim*2, output_vector, output_vector, new_state)
-						   
-		i = i + 1
-		state = new_state
-		return (i,new_state)
-	
-	i = 0
-	state = tf.zeros([batch_size,latent_dim*2])
-	hidden_state = tf.zeros([batch_size,latent_dim*2])
-	
-	_,state = tf.while_loop(
-		lambda i,state: tf.less(i,tf.shape(sequence)[1]),
-		body,
-		[i,state]
-	)
-	
-	return state
+encoder_input = tf.keras.Input(shape=[None,encode_length])
+o,h,c = tf.keras.layers.LSTM(latent_dim,return_state=True)(encoder_input)
 
-def decoder(latent,state_so_far):
+x = tf.keras.layers.Flatten()(h)
+latent_h_seeds = tf.keras.layers.Dense(latent_dim*2)(x)
+latent_h = tf.keras.layers.Lambda(sample_from_latents)(latent_h_seeds)
 
-	output_vector,new_state = lstm('decoder',
-								   'decoder.lstm1.input_matrix_vector','decoder.lstm1.input_matrix_state','decoder.lstm1.input_bias',
-								   'decoder.lstm1.output_matrix_vector','decoder.lstm1.output_matrix_state','decoder.lstm1.output_bias',
-								   'decoder.lstm1.forget_matrix_vector','decoder.lstm1.forget_matrix_state','decoder.lstm1.forget_bias',
-								   'decoder.lstm1.state_matrix_vector','decoder.lstm1.state_matrix_state','decoder.lstm1.state_bias',
-								   latent_dim, latent_dim, state_so_far, state_so_far, latent)
-					   
-	output_vector,new_state = lstm('decoder',
-								   'decoder.lstm2.input_matrix_vector','decoder.lstm2.input_matrix_state','decoder.lstm2.input_bias',
-								   'decoder.lstm2.output_matrix_vector','decoder.lstm2.output_matrix_state','decoder.lstm2.output_bias',
-								   'decoder.lstm2.forget_matrix_vector','decoder.lstm2.forget_matrix_state','decoder.lstm2.forget_bias',
-								   'decoder.lstm2.state_matrix_vector','decoder.lstm2.state_matrix_state','decoder.lstm2.state_bias',
-								   latent_dim, latent_dim, output_vector, output_vector, new_state)
-					   
-	output_vector,new_state = lstm('decoder',
-								   'decoder.lstm3.input_matrix_vector','decoder.lstm3.input_matrix_state','decoder.lstm3.input_bias',
-								   'decoder.lstm3.output_matrix_vector','decoder.lstm3.output_matrix_state','decoder.lstm3.output_bias',
-								   'decoder.lstm3.forget_matrix_vector','decoder.lstm3.forget_matrix_state','decoder.lstm3.forget_bias',
-								   'decoder.lstm3.state_matrix_vector','decoder.lstm3.state_matrix_state','decoder.lstm3.state_bias',
-								   latent_dim, latent_dim, output_vector, output_vector, new_state)
-						   
-	output_vector = dense('decoder.dense1.matrix','decoder.dense1.bias','decoder',latent_dim,encode_length,output_vector)				   
-	output_vector = tf.reshape(output_vector,[batch_size,1,encode_length])
+x = tf.keras.layers.Flatten()(c)
+latent_c_seeds = tf.keras.layers.Dense(latent_dim*2)(x)
+latent_c = tf.keras.layers.Lambda(sample_from_latents)(latent_c_seeds)
 
-	return (output_vector,new_state)
+decoder_input = tf.keras.Input(shape=[None,encode_length])
+out,_,_ = tf.keras.layers.LSTM(latent_dim,return_sequences=True,return_state=True)(decoder_input,initial_state=[latent_h,latent_c])
+out = tf.keras.layers.Dense(encode_length,activation='softmax')(out)
 
-training_set = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
-correct_next = tf.placeholder(shape=[batch_size,encode_length],dtype=tf.dtypes.float32)
+model = tf.keras.Model([encoder_input,decoder_input],out)
+model.compile(optimizer='rmsprop',loss=custom_loss(latent_h_seeds,latent_c_seeds))
+model.fit([train_sequences_h1,train_sequences_h1],train_sequences_h1_offset,epochs=50)
 
-encodings = encoder(training_set)
-print("encodings shape",encodings)
+encoder = tf.keras.Model(encoder_input,[latent_h,latent_c])
+decoder = tf.keras.Model([decoder_input,latent_h,latent_c],out)
 
-means = tf.reshape(encodings[:,:latent_dim],[-1])
-log_variances = tf.reshape(encodings[:,latent_dim:],[-1])
+def reconstruct(sequence):
+	state_h,state_c = encoder.predict(sequence)[0]
+	r = []
+	h,c = state_h,state_c
+	new_sequence = np.zeros([1,1,encode_length])
+	new_sequence[0,0,-1] = 1.
+	while (np.argmax(r[-1]) != np.argmax(EOM_VECTOR) and len(r) < 1000):
+		output,h,c = decoder.predict([sequence] + h + c)
+		predicted_character = ORDER[np.argmax(output[0,-1,:])]
+		r.append(predicted_character)
+		new_sequence = np.zeros([1,1,encode_length])
+		new_sequence[0,0,np.argmax(output[0,-1,:])] = 1.
+	return r
 
-distribution = tf.contrib.distributions.MultivariateNormalDiag(means,tf.exp(log_variances))
+print(train_sequences_h1[0:1])
+print(reconstruct(train_sequences_h1[0:1]))		
 
-latent = distribution.sample()
-latent = tf.reshape(latent,[batch_size,latent_dim])
-
-reconstruction,state = decoder(latent,latent)
-reconstruction = tf.reshape(reconstruction,[batch_size,encode_length])
-
-accuracy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(reconstruction,correct_next))
-
-kl_loss = 0.5 * tf.reduce_sum(tf.square(means) + tf.exp(log_variances) - log_variances - 1.)
-
-loss = accuracy_loss + kl_loss
-
-optimizer = tf.train.AdamOptimizer()
-train = optimizer.minimize(loss,var_list=tf.get_collection('encoder')+tf.get_collection('decoder'))
-
-init = tf.initializers.variables(tf.get_collection('encoder')+tf.get_collection('decoder'))
-
-writer = tf.summary.FileWriter('/home/ceolson0/Documents/tensorboard',sess.graph)
-
-# ~ saver = tf.train.Saver(tf.get_collection('discriminator')+tf.get_collection('generator'))
-
-def predict(input_sequence):
-	latent_testing = sess.run(latent,feed_dict={training_set:input_sequence})
-	running = latent
-	current = [[SOM_VECTOR] for i in range(batch_size)]
-	string = ''
-	while np.argmax(current[-1]) != np.argmax(EOM_VECTOR) and len(current) < 1000:
-		r,s = sess.run([reconstruction,state],feed_dict={training_set:np.append(input_sequence,current,axis=1)})
-		character = ORDER[np.argmax(r[0])]
-		string += character
-		current[0].append(r[0])
-		for i in range(1,batch_size):
-			current[i].append(SOM_VECTOR)
-			
-		running = s
-	return string
-
-
-sess.run(init)
-sess.run(tf.global_variables_initializer())
-
-epochs = 500
-
-for epoch in range(epochs):
-	print("vae1, epoch",epoch)
-	
-	length = np.random.choice(range(max_size))
-	batch_sequences = np.random.permutation(train_sequences_h1)[:batch_size].astype('float32')
-	so_fars = batch_sequences[:,:length,:]
-	correct_nexts = batch_sequences[:,length,:].reshape(batch_size,encode_length)
-
-	_,l,r = sess.run([train,loss,reconstruction],feed_dict={training_set:so_fars,correct_next:correct_nexts})
-	print(l)
-	print(np.argmax(correct_nexts[0]),np.argmax(r[0]))
-	# ~ if epoch % 20 == 0:
-		# ~ test_seq = np.random.permutation(train_sequences_h1)[:batch_size].astype('float32')
-		# ~ test_seq_string = ''
-		# ~ for encoding in test_seq[0]:
-			# ~ test_seq_string += ORDER[np.argmax(encoding)]
-			
-		# ~ recon = predict(test_seq)
-		# ~ print(test_seq_string)
-		# ~ print(recon)
-		
-	# ~ prediction = sess.run(decoder(tf.random_normal([batch_size,latent_dim])))[0]
-	# ~ sequence = []
-	# ~ sequence_string = ''
-	# ~ for i in range(len(prediction)):
-		# ~ index = np.argmax(prediction[i])
-		# ~ residue = ORDER[index]
-		# ~ sequence.append(residue)
-		# ~ sequence_string += residue
-	# ~ print(sequence_string)
-
-sess.close()
