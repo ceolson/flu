@@ -6,9 +6,11 @@ from deepchem.utils.genomics import encode_fasta_sequence
 from Bio import SeqIO
 import h5py
 
-ORDER = ['A','R','N','D','C','Q','E','G','H','I','L','K','M','F','P','S','T','W','Y','V']
+ORDER = ['A','R','N','D','C','Q','E','G','H','I','L','K','M','F','P','S','T','W','Y','V','<EOM>','<SOM>']
 EOM_TENSOR = tf.constant([[0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,1.,0.]])
 SOM_TENSOR = tf.constant([[0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,1.]])
+EOM_VECTOR = np.array([0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,1.,0.]).astype('float32')
+SOM_VECTOR = np.array([0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,1.]).astype('float32')
 	
 ### Limit GPU memory used by tf
 print("Limit GPU memory")
@@ -47,7 +49,7 @@ sess = tf.Session(config=config)
 
 # FAKE DATA (ONE MUTATED RESIDUE IN A FIXED SEQUENCE) HERE
 
-data_file = h5py.File('/home/ceolson0/Documents/test_fastas2.h5','r')
+data_file = h5py.File('/home/ceolson0/Documents/test_fastas3.h5','r')
 train_sequences_h1 = data_file.get('sequences_cat').value
 data_file.close()
 
@@ -161,76 +163,61 @@ def encoder(sequence):
 	hidden_state = tf.zeros([batch_size,latent_dim*2])
 	
 	_,state = tf.while_loop(
-		lambda i,state: tf.less(i,tf.shape(sequence)[-1]),
+		lambda i,state: tf.less(i,tf.shape(sequence)[1]),
 		body,
 		[i,state]
 	)
 	
 	return state
 
-def decoder(latent):
-	def body(reconstructions,state):
-		output_vector,new_state = lstm('decoder',
-									   'decoder.lstm1.input_matrix_vector','decoder.lstm1.input_matrix_state','decoder.lstm1.input_bias',
-									   'decoder.lstm1.output_matrix_vector','decoder.lstm1.output_matrix_state','decoder.lstm1.output_bias',
-									   'decoder.lstm1.forget_matrix_vector','decoder.lstm1.forget_matrix_state','decoder.lstm1.forget_bias',
-									   'decoder.lstm1.state_matrix_vector','decoder.lstm1.state_matrix_state','decoder.lstm1.state_bias',
-									   encode_length, latent_dim, tf.reshape(reconstructions[:,-1,:],[batch_size,encode_length]), hidden_state, state)
-						   
-		output_vector,new_state = lstm('decoder',
-									   'decoder.lstm2.input_matrix_vector','decoder.lstm2.input_matrix_state','decoder.lstm2.input_bias',
-									   'decoder.lstm2.output_matrix_vector','decoder.lstm2.output_matrix_state','decoder.lstm2.output_bias',
-									   'decoder.lstm2.forget_matrix_vector','decoder.lstm2.forget_matrix_state','decoder.lstm2.forget_bias',
-									   'decoder.lstm2.state_matrix_vector','decoder.lstm2.state_matrix_state','decoder.lstm2.state_bias',
-									   latent_dim, latent_dim, output_vector, output_vector, new_state)
-						   
-		output_vector,new_state = lstm('decoder',
-									   'decoder.lstm3.input_matrix_vector','decoder.lstm3.input_matrix_state','decoder.lstm3.input_bias',
-									   'decoder.lstm3.output_matrix_vector','decoder.lstm3.output_matrix_state','decoder.lstm3.output_bias',
-									   'decoder.lstm3.forget_matrix_vector','decoder.lstm3.forget_matrix_state','decoder.lstm3.forget_bias',
-									   'decoder.lstm3.state_matrix_vector','decoder.lstm3.state_matrix_state','decoder.lstm3.state_bias',
-									   latent_dim, latent_dim, output_vector, output_vector, new_state)
-						   
-		output_vector = dense('decoder.dense1.matrix','decoder.dense1.bias','decoder',latent_dim,encode_length,output_vector)				   
-		output_vector = tf.reshape(output_vector,[batch_size,1,encode_length])
-		
-		reconstructions = tf.concat([reconstructions,output_vector],axis=1)
+def decoder(latent,state_so_far):
 
-		return (reconstructions,state)
-		
-	def cond(reconstructions,state):
-		lasts = reconstructions[:,-1:]
-		lasts = tf.reshape(lasts,[batch_size,encode_length])
-		eoms = tf.tile(EOM_TENSOR,[batch_size,1])
-		return tf.reduce_all(tf.logical_not(tf.equal(lasts,eoms)))
-		
-	reconstructions = tf.tile(SOM_TENSOR,[batch_size,1])
-	reconstructions = tf.reshape(reconstructions,[batch_size,1,encode_length])
-	state = latent
-	hidden_state = tf.zeros([batch_size,latent_dim])
-	
-	reconstructions,_ = tf.while_loop(cond,body,[reconstructions,state],shape_invariants=[tf.TensorShape([batch_size,None,encode_length]),tf.TensorShape([500,100])])
-	return reconstructions
+	output_vector,new_state = lstm('decoder',
+								   'decoder.lstm1.input_matrix_vector','decoder.lstm1.input_matrix_state','decoder.lstm1.input_bias',
+								   'decoder.lstm1.output_matrix_vector','decoder.lstm1.output_matrix_state','decoder.lstm1.output_bias',
+								   'decoder.lstm1.forget_matrix_vector','decoder.lstm1.forget_matrix_state','decoder.lstm1.forget_bias',
+								   'decoder.lstm1.state_matrix_vector','decoder.lstm1.state_matrix_state','decoder.lstm1.state_bias',
+								   latent_dim, latent_dim, state_so_far, state_so_far, latent)
+					   
+	output_vector,new_state = lstm('decoder',
+								   'decoder.lstm2.input_matrix_vector','decoder.lstm2.input_matrix_state','decoder.lstm2.input_bias',
+								   'decoder.lstm2.output_matrix_vector','decoder.lstm2.output_matrix_state','decoder.lstm2.output_bias',
+								   'decoder.lstm2.forget_matrix_vector','decoder.lstm2.forget_matrix_state','decoder.lstm2.forget_bias',
+								   'decoder.lstm2.state_matrix_vector','decoder.lstm2.state_matrix_state','decoder.lstm2.state_bias',
+								   latent_dim, latent_dim, output_vector, output_vector, new_state)
+					   
+	output_vector,new_state = lstm('decoder',
+								   'decoder.lstm3.input_matrix_vector','decoder.lstm3.input_matrix_state','decoder.lstm3.input_bias',
+								   'decoder.lstm3.output_matrix_vector','decoder.lstm3.output_matrix_state','decoder.lstm3.output_bias',
+								   'decoder.lstm3.forget_matrix_vector','decoder.lstm3.forget_matrix_state','decoder.lstm3.forget_bias',
+								   'decoder.lstm3.state_matrix_vector','decoder.lstm3.state_matrix_state','decoder.lstm3.state_bias',
+								   latent_dim, latent_dim, output_vector, output_vector, new_state)
+						   
+	output_vector = dense('decoder.dense1.matrix','decoder.dense1.bias','decoder',latent_dim,encode_length,output_vector)				   
+	output_vector = tf.reshape(output_vector,[batch_size,1,encode_length])
+
+	return (output_vector,new_state)
 
 training_set = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
+correct_next = tf.placeholder(shape=[batch_size,encode_length],dtype=tf.dtypes.float32)
 
 encodings = encoder(training_set)
 print("encodings shape",encodings)
 
 means = tf.reshape(encodings[:,:latent_dim],[-1])
-variances = tf.reshape(encodings[:,latent_dim:],[-1])
+log_variances = tf.reshape(encodings[:,latent_dim:],[-1])
 
-distribution = tf.contrib.distributions.MultivariateNormalDiag(means,variances)
+distribution = tf.contrib.distributions.MultivariateNormalDiag(means,tf.exp(log_variances))
 
 latent = distribution.sample()
 latent = tf.reshape(latent,[batch_size,latent_dim])
 
-reconstructions = decoder(latent)
-reconstructions = tf.reshape(reconstructions,[batch_size,max_size,encode_length])
+reconstruction,state = decoder(latent,latent)
+reconstruction = tf.reshape(reconstruction,[batch_size,encode_length])
 
-accuracy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(training_set,reconstructions))
+accuracy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(reconstruction,correct_next))
 
-kl_loss = 0.5 * tf.reduce_sum(tf.square(variances) + tf.square(means) - tf.log(tf.square(variances)) - 1.)
+kl_loss = 0.5 * tf.reduce_sum(tf.square(means) + tf.exp(log_variances) - log_variances - 1.)
 
 loss = accuracy_loss + kl_loss
 
@@ -243,26 +230,57 @@ writer = tf.summary.FileWriter('/home/ceolson0/Documents/tensorboard',sess.graph
 
 # ~ saver = tf.train.Saver(tf.get_collection('discriminator')+tf.get_collection('generator'))
 
+def predict(input_sequence):
+	latent_testing = sess.run(latent,feed_dict={training_set:input_sequence})
+	running = latent
+	current = [[SOM_VECTOR] for i in range(batch_size)]
+	string = ''
+	while np.argmax(current[-1]) != np.argmax(EOM_VECTOR) and len(current) < 1000:
+		r,s = sess.run([reconstruction,state],feed_dict={training_set:np.append(input_sequence,current,axis=1)})
+		character = ORDER[np.argmax(r[0])]
+		string += character
+		current[0].append(r[0])
+		for i in range(1,batch_size):
+			current[i].append(SOM_VECTOR)
+			
+		running = s
+	return string
+
+
 sess.run(init)
 sess.run(tf.global_variables_initializer())
 
-epochs = 5
+epochs = 500
 
 for epoch in range(epochs):
 	print("vae1, epoch",epoch)
-	batch = np.random.permutation(train_sequences_h1)[:batch_size].astype('float32')
-	print(np.shape(batch))
-	_,loss = sess.run([train,loss],feed_dict={training_set:batch})
-	print(loss)
 	
-	prediction = sess.run(decoder(tf.random_normal([batch_size,latent_dim])))[0]
-	sequence = []
-	sequence_string = ''
-	for i in range(len(prediction)):
-		index = np.argmax(prediction[i])
-		residue = ORDER[index]
-		sequence.append(residue)
-		sequence_string += residue
-	print(sequence_string)
+	length = np.random.choice(range(max_size))
+	batch_sequences = np.random.permutation(train_sequences_h1)[:batch_size].astype('float32')
+	so_fars = batch_sequences[:,:length,:]
+	correct_nexts = batch_sequences[:,length,:].reshape(batch_size,encode_length)
+
+	_,l,r = sess.run([train,loss,reconstruction],feed_dict={training_set:so_fars,correct_next:correct_nexts})
+	print(l)
+	print(np.argmax(correct_nexts[0]),np.argmax(r[0]))
+	# ~ if epoch % 20 == 0:
+		# ~ test_seq = np.random.permutation(train_sequences_h1)[:batch_size].astype('float32')
+		# ~ test_seq_string = ''
+		# ~ for encoding in test_seq[0]:
+			# ~ test_seq_string += ORDER[np.argmax(encoding)]
+			
+		# ~ recon = predict(test_seq)
+		# ~ print(test_seq_string)
+		# ~ print(recon)
+		
+	# ~ prediction = sess.run(decoder(tf.random_normal([batch_size,latent_dim])))[0]
+	# ~ sequence = []
+	# ~ sequence_string = ''
+	# ~ for i in range(len(prediction)):
+		# ~ index = np.argmax(prediction[i])
+		# ~ residue = ORDER[index]
+		# ~ sequence.append(residue)
+		# ~ sequence_string += residue
+	# ~ print(sequence_string)
 
 sess.close()
