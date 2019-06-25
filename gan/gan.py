@@ -22,7 +22,7 @@ sess = tf.Session(config=config)
 
 # REAL DATA HERE __________________________________
 
-file = h5py.File('/projects/ml/flu/processed_data_525916981168.h5','r')
+file = h5py.File('/projects/ml/flu/fludb_data/processed_data_525916981168.h5','r')
 train_labels = file.get('train_labels').value
 train_sequences = file.get('train_sequences_categorical').value
 valid_labels = file.get('valid_labels').value
@@ -51,7 +51,9 @@ train_sequences_h1 = np.array(train_sequences_h1)
 max_size = len(train_sequences_h1[0])
 encode_length = len(train_sequences_h1[0][0])
 batch_size=50
+minibatch_size=10
 
+print('SHAPE __________________________________',np.shape(train_sequences_h1))
 ### Set up models
 
 # Layers
@@ -96,11 +98,11 @@ def conv(filter_name,bias_name,model,filter_shape,in_tensor):
 # Generator
 
 def generator(seed):
-	seed = tf.reshape(seed,(batch_size,100))
+	seed = tf.reshape(seed,(batch_size*minibatch_size,100))
 	
 	seed2 = dense('generator.dense1.matrix','generator.dense1.bias','generator',100,max_size*64,seed)
 	seed2 = tf.nn.leaky_relu(seed2)
-	seed2 = tf.reshape(seed2,[batch_size,max_size,64])
+	seed2 = tf.reshape(seed2,[batch_size*minibatch_size,max_size,64])
 	
 	x = residual_block('generator.res1.filter1','generator.res1.bias1','generator.res1.filter2','generator.res1.bias2','generator',64,64,seed2)
 	x = residual_block('generator.res2.filter1','generator.res2.bias1','generator.res2.filter2','generator.res2.bias2','generator',64,64,x)
@@ -125,9 +127,9 @@ def discriminator(sequence):
 	x = residual_block('discriminator.res4.filter1','discriminator.res4.bias1','discriminator.res4.filter2','discriminator.res4.bias1','discriminator',64,64,x)
 	x = residual_block('discriminator.res5.filter1','discriminator.res5.bias1','discriminator.res5.filter2','discriminator.res5.bias1','discriminator',64,64,x)
 	
-	x = tf.reshape(x,(batch_size,max_size*64))
+	x = tf.reshape(x,(batch_size,minibatch_size*max_size*64))
 	
-	output = dense('discriminator.dense1.matrix','discriminator.dense1.bias','discriminator',max_size*64,1,x)
+	output = dense('discriminator.dense1.matrix','discriminator.dense1.bias','discriminator',minibatch_size*max_size*64,1,x)
 	return output
 	
 ### Constructing the loss function
@@ -138,9 +140,12 @@ noise = tf.placeholder(float,name='noise')
 fake_images = generator(noise)
 fake_images = tf.identity(fake_images,name='fake_images')
 
+real_images_minibatched = tf.reshape(real_images,[batch_size,minibatch_size,max_size,encode_length])
+fake_images_minibatched = tf.reshape(fake_images,[batch_size,minibatch_size,max_size,encode_length])
+
 # Sampling images in the encoded space between the fake ones and the real ones
 
-interpolation_coeffs = tf.random_uniform(shape=(batch_size,1,1))
+interpolation_coeffs = tf.random_uniform(shape=(batch_size*minibatch_size,1,1))
 sampled_images = tf.add(real_images,tf.multiply(tf.subtract(fake_images,real_images),interpolation_coeffs),name='sampled_images')
 
 # Gradient penalty
@@ -198,15 +203,15 @@ for epoch in range(epochs):
 	
 	# Train discriminator
 	for i in range(5):
-		real = np.random.permutation(train_sequences_h1)[:batch_size].astype(np.float32)
-		noise_input = np.random.normal(0,1,(batch_size,100))
+		real = np.random.permutation(train_sequences_h1)[:batch_size*minibatch_size].astype(np.float32)
+		noise_input = np.random.normal(0,1,(batch_size*minibatch_size,100))
 		_,d_loss,grads = sess.run([train_discriminator,diff,grads_discriminator],feed_dict={real_images:real,noise:noise_input})
 		print("Training discriminator",d_loss)
 			
 	# Train generator
 
-	real = np.random.permutation(train_sequences_h1)[:batch_size].astype(np.float32)
-	noise_input = np.random.normal(0,1,(batch_size,100))
+	real = np.random.permutation(train_sequences_h1)[:batch_size*minibatch_size].astype(np.float32)
+	noise_input = np.random.normal(0,1,(batch_size*minibatch_size,100))
 	_,g_loss,grads = sess.run([train_generator,gen_loss,grads_generator],feed_dict={noise:noise_input})
 	print("Training generator",g_loss)
 
@@ -214,7 +219,7 @@ for epoch in range(epochs):
 	print("Discriminator loss: ",d_loss)
 		
 	# Print a sample string	
-	prediction = sess.run(generator(tf.random_normal((50,100))))[0]
+	prediction = sess.run(generator(tf.random_normal((batch_size*minibatch_size,100))))[0]
 	sequence = []
 	sequence_string = ''
 	for i in range(len(prediction)):
