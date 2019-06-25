@@ -6,7 +6,7 @@ from deepchem.utils.genomics import encode_fasta_sequence
 from Bio import SeqIO
 import h5py
 
-ORDER = ['A','R','N','D','C','Q','E','G','H','I','L','K','M','F','P','S','T','W','Y','V']
+ORDER = ['A','R','N','D','C','Q','E','G','H','I','L','K','M','F','P','S','T','W','Y','V','X']
 	
 ### Limit GPU memory used by tf
 print("Limit GPU memory")
@@ -20,38 +20,38 @@ sess = tf.Session(config=config)
 
 ### Prep data
 
-# REAL DATA COMMENTED OUT __________________________________
+# REAL DATA HERE __________________________________
 
-# ~ file = h5py.File('/projects/ml/flu/processed_data_525916981168.h5','r')
-# ~ train_labels = file.get('train_labels').value
-# ~ train_sequences = file.get('train_sequences_categorical').value
-# ~ valid_labels = file.get('valid_labels').value
-# ~ valid_sequences = file.get('valid_sequences_categorical').value
-# ~ test_labels = file.get('test_labels').value
-# ~ test_sequences = file.get('test_sequences_categorical').value
-# ~ file.close()
+file = h5py.File('/projects/ml/flu/processed_data_525916981168.h5','r')
+train_labels = file.get('train_labels').value
+train_sequences = file.get('train_sequences_categorical').value
+valid_labels = file.get('valid_labels').value
+valid_sequences = file.get('valid_sequences_categorical').value
+test_labels = file.get('test_labels').value
+test_sequences = file.get('test_sequences_categorical').value
+file.close()
 
-# ~ train_sequences = np.array(train_sequences)
-# ~ valid_sequences = np.array(valid_sequences)
-# ~ test_sequences = np.array(test_sequences)
+train_sequences = np.array(train_sequences)
+valid_sequences = np.array(valid_sequences)
+test_sequences = np.array(test_sequences)
 
 
-
-# ~ train_sequences_h1 = []
-# ~ for i in range(len(train_sequences)):
-    # ~ if np.argmax(train_labels[i]) == 1:
-        # ~ train_sequences_h1.append(train_sequences[i])
-# ~ train_sequences_h1 = np.array(train_sequences_h1)
+train_sequences_h1 = []
+for i in range(len(train_sequences)):
+    if np.argmax(train_labels[i]) == 1:
+        train_sequences_h1.append(train_sequences[i])
+train_sequences_h1 = np.array(train_sequences_h1)
 
 # FAKE DATA (ONE MUTATED RESIDUE IN A FIXED SEQUENCE) HERE
 
-data_file = h5py.File('/home/ceolson0/Documents/test_fastas2.h5','r')
-train_sequences_h1 = data_file.get('sequences_cat').value
-data_file.close()
+# ~ data_file = h5py.File('/home/ceolson0/Documents/test_fastas2.h5','r')
+# ~ train_sequences_h1 = data_file.get('sequences_cat').value
+# ~ data_file.close()
 
 max_size = len(train_sequences_h1[0])
 encode_length = len(train_sequences_h1[0][0])
 batch_size=50
+
 ### Set up models
 
 # Layers
