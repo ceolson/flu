@@ -243,4 +243,3 @@ sess.close()
 # ~ x = tf.keras.layers.Conv2D(64,(5,encode_length),activation=tf.nn.leaky_relu,padding='same')(c_sequence2)
 # ~ x = tf.keras.layers.Conv2D(64,(5,encode_length),activation=tf.nn.leaky_relu,padding='same')(x)
 # ~ x = tf.keras.layers.Conv2D(64,(5,encode_length),activation=tf.nn.leaky_relu)(x)
-
