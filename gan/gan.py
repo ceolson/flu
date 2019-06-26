@@ -22,38 +22,40 @@ sess = tf.Session(config=config)
 
 # REAL DATA HERE __________________________________
 
-file = h5py.File('/projects/ml/flu/fludb_data/processed_data_525916981168.h5','r')
-train_labels = file.get('train_labels').value
-train_sequences = file.get('train_sequences_categorical').value
-valid_labels = file.get('valid_labels').value
-valid_sequences = file.get('valid_sequences_categorical').value
-test_labels = file.get('test_labels').value
-test_sequences = file.get('test_sequences_categorical').value
-file.close()
+# ~ file = h5py.File('/projects/ml/flu/fludb_data/processed_data_525916981168.h5','r')
+# ~ train_labels = file.get('train_labels').value
+# ~ train_sequences = file.get('train_sequences_categorical').value
+# ~ valid_labels = file.get('valid_labels').value
+# ~ valid_sequences = file.get('valid_sequences_categorical').value
+# ~ test_labels = file.get('test_labels').value
+# ~ test_sequences = file.get('test_sequences_categorical').value
+# ~ file.close()
 
-train_sequences = np.array(train_sequences)
-valid_sequences = np.array(valid_sequences)
-test_sequences = np.array(test_sequences)
+# ~ train_sequences = np.array(train_sequences)
+# ~ valid_sequences = np.array(valid_sequences)
+# ~ test_sequences = np.array(test_sequences)
 
 
-train_sequences_h1 = []
-for i in range(len(train_sequences)):
-    if np.argmax(train_labels[i]) == 1:
-        train_sequences_h1.append(train_sequences[i])
-train_sequences_h1 = np.array(train_sequences_h1)
+# ~ train_sequences_h1 = []
+# ~ for i in range(len(train_sequences)):
+    # ~ if np.argmax(train_labels[i]) == 1:
+        # ~ train_sequences_h1.append(train_sequences[i])
+# ~ train_sequences_h1 = np.array(train_sequences_h1)
 
 # FAKE DATA (ONE MUTATED RESIDUE IN A FIXED SEQUENCE) HERE
+# There are 10000 samples, each representing a sequence of length 562
+# Residues are encoded as one-hot categorical vectors
+# Shape is (10000, 562, 20)
 
-# ~ data_file = h5py.File('/home/ceolson0/Documents/test_fastas2.h5','r')
-# ~ train_sequences_h1 = data_file.get('sequences_cat').value
-# ~ data_file.close()
+data_file = h5py.File('/home/ceolson0/Documents/test_fastas2.h5','r')
+train_sequences_h1 = data_file.get('sequences_cat').value
+data_file.close()
 
 max_size = len(train_sequences_h1[0])
 encode_length = len(train_sequences_h1[0][0])
 batch_size=50
 minibatch_size=10
 
-print('SHAPE __________________________________',np.shape(train_sequences_h1))
 ### Set up models
 
 # Layers
@@ -82,7 +84,6 @@ def dense(matrix,bias,model,in_dim,out_dim,in_tensor):
 		W = tf.get_variable(matrix,collections=[model],trainable=True,shape=[in_dim,out_dim])
 		b = tf.get_variable(bias,collections=[model],trainable=True,shape=[out_dim,])
 
-	
 	return tf.matmul(in_tensor,W) + b
 
 
