@@ -135,9 +135,9 @@ def compute_kl_loss(latent_h_seeds,latent_c_seeds):
 
 kl_loss = compute_kl_loss(latent_seeds_h,latent_seeds_c)
 
-loss = tf.reduce_mean(accuracy_loss + kl_loss)
+loss = tf.reduce_mean(accuracy_loss + 0.*kl_loss)
 
-optimizer = tf.train.GradientDescentOptimizer(0.01)
+optimizer = tf.train.GradientDescentOptimizer(0.0001)
 train = optimizer.minimize(loss)
 
 sess.run(tf.global_variables_initializer())
@@ -146,9 +146,10 @@ sess.run(tf.global_variables_initializer())
 saver = tf.train.Saver(tf.all_variables())
 
 
-# ~ saver.restore(sess,'/home/ceolson0/Documents/models/vae')
+saver.restore(sess,'/home/ceolson0/Documents/models/vae')
 
 print(np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()]))
+
 
 epochs = 10000
 for epoch in range(epochs):

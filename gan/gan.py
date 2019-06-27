@@ -96,20 +96,39 @@ def conv(filter_name,bias_name,model,filter_shape,in_tensor):
 	out = tf.add(out,bias)
 	return out
 	
+def batchnorm(sequence,offset_name,scale_name,model):
+	with tf.variable_scope('',reuse=tf.AUTO_REUSE):
+		offset = tf.get_variable(offset_name,collections=[model],trainable=True,initializer=tf.zeros(tf.shape(sequence)[1:]))
+		scale = tf.get_variable(scale_name,collections=[model],trainable=True,initializer=tf.ones(tf.shape(sequence)[1:]))
+	
+	means,variances = tf.nn.moments(sequence,axes=[0])
+	normalized = tf.nn.batch_normalization(sequence,means,variances,offset,scale,tf.constant(0.001))
+	
+	return normalized
+	
 # Generator
 
-def generator(seed):
-	seed = tf.reshape(seed,(batch_size*minibatch_size,100))
+def generator(seed,training=True):
+	seed = tf.reshape(seed,(batch_size,100))
 	
 	seed2 = dense('generator.dense1.matrix','generator.dense1.bias','generator',100,max_size*64,seed)
 	seed2 = tf.nn.leaky_relu(seed2)
-	seed2 = tf.reshape(seed2,[batch_size*minibatch_size,max_size,64])
+	seed2 = tf.reshape(seed2,[batch_size,max_size,64])
 	
 	x = residual_block('generator.res1.filter1','generator.res1.bias1','generator.res1.filter2','generator.res1.bias2','generator',64,64,seed2)
+	if training: x = batchnorm(x,'generator.batchnorm1.offset','generator.batchnorm1.scale','generator')
+	
 	x = residual_block('generator.res2.filter1','generator.res2.bias1','generator.res2.filter2','generator.res2.bias2','generator',64,64,x)
+	if training: x = batchnorm(x,'generator.batchnorm2.offset','generator.batchnorm2.scale','generator')
+	
 	x = residual_block('generator.res3.filter1','generator.res3.bias1','generator.res3.filter2','generator.res3.bias2','generator',64,64,x)
+	if training: x = batchnorm(x,'generator.batchnorm3.offset','generator.batchnorm3.scale','generator')
+	
 	x = residual_block('generator.res4.filter1','generator.res4.bias1','generator.res4.filter2','generator.res4.bias2','generator',64,64,x)
+	if training: x = batchnorm(x,'generator.batchnorm4.offset','generator.batchnorm4.scale','generator')
+	
 	x = residual_block('generator.res5.filter1','generator.res5.bias1','generator.res5.filter2','generator.res5.bias2','generator',64,64,x)
+	if training: x = batchnorm(x,'generator.batchnorm5.offset','generator.batchnorm5.scale','generator')
 
 	x = conv('generator.conv1.filter','generator.conv1.bias','generator',(5,64,encode_length),x)
 	
@@ -128,10 +147,12 @@ def discriminator(sequence):
 	x = residual_block('discriminator.res4.filter1','discriminator.res4.bias1','discriminator.res4.filter2','discriminator.res4.bias1','discriminator',64,64,x)
 	x = residual_block('discriminator.res5.filter1','discriminator.res5.bias1','discriminator.res5.filter2','discriminator.res5.bias1','discriminator',64,64,x)
 	
-	x = tf.reshape(x,(batch_size,minibatch_size*max_size*64))
+	x = tf.reshape(x,(batch_size,max_size*64))
 	
-	output = dense('discriminator.dense1.matrix','discriminator.dense1.bias','discriminator',minibatch_size*max_size*64,1,x)
+	output = dense('discriminator.dense1.matrix','discriminator.dense1.bias','discriminator',max_size*64,1,x)
 	return output
+	
+
 	
 ### Constructing the loss function
 
@@ -141,12 +162,9 @@ noise = tf.placeholder(float,name='noise')
 fake_images = generator(noise)
 fake_images = tf.identity(fake_images,name='fake_images')
 
-real_images_minibatched = tf.reshape(real_images,[batch_size,minibatch_size,max_size,encode_length])
-fake_images_minibatched = tf.reshape(fake_images,[batch_size,minibatch_size,max_size,encode_length])
-
 # Sampling images in the encoded space between the fake ones and the real ones
 
-interpolation_coeffs = tf.random_uniform(shape=(batch_size*minibatch_size,1,1))
+interpolation_coeffs = tf.random_uniform(shape=(batch_size,1,1))
 sampled_images = tf.add(real_images,tf.multiply(tf.subtract(fake_images,real_images),interpolation_coeffs),name='sampled_images')
 
 # Gradient penalty
@@ -164,10 +182,8 @@ pred_fake = tf.identity(pred_fake,name='pred_fake')
 
 diff = tf.reduce_mean(tf.subtract(pred_fake,pred_real))
 
-# Discriminator wants fake sequences to be labeled 0, real to be labeled 1
 disc_loss = tf.add(diff,tf.multiply(tf.constant(10.),score),name='disc_loss')
 
-# Generator wants fake sequences to be labeled 1
 gen_loss = - tf.reduce_mean(pred_fake,name='gen_loss')
 
 # For tracking using tensorboard
@@ -203,16 +219,20 @@ for epoch in range(epochs):
 
 	
 	# Train discriminator
+	d_loss_delta = np.infty
+	current_loss = np.infty
 	for i in range(5):
-		real = np.random.permutation(train_sequences_h1)[:batch_size*minibatch_size].astype(np.float32)
-		noise_input = np.random.normal(0,1,(batch_size*minibatch_size,100))
+		real = np.random.permutation(train_sequences_h1)[:batch_size].astype(np.float32)
+		noise_input = np.random.normal(0,1,(batch_size,100))
 		_,d_loss,grads = sess.run([train_discriminator,diff,grads_discriminator],feed_dict={real_images:real,noise:noise_input})
 		print("Training discriminator",d_loss)
+		d_loss_delta = current_loss - d_loss
+		current_loss = d_loss
 			
 	# Train generator
 
-	real = np.random.permutation(train_sequences_h1)[:batch_size*minibatch_size].astype(np.float32)
-	noise_input = np.random.normal(0,1,(batch_size*minibatch_size,100))
+	real = np.random.permutation(train_sequences_h1)[:batch_size].astype(np.float32)
+	noise_input = np.random.normal(0,1,(batch_size,100))
 	_,g_loss,grads = sess.run([train_generator,gen_loss,grads_generator],feed_dict={noise:noise_input})
 	print("Training generator",g_loss)
 
@@ -220,7 +240,7 @@ for epoch in range(epochs):
 	print("Discriminator loss: ",d_loss)
 		
 	# Print a sample string	
-	prediction = sess.run(generator(tf.random_normal((batch_size*minibatch_size,100))))[0]
+	prediction = sess.run(generator(tf.random_normal((batch_size,100)),training=False))[0]
 	sequence = []
 	sequence_string = ''
 	for i in range(len(prediction)):
