@@ -116,24 +116,14 @@ def generator(seed,training=True):
 	seed2 = tf.reshape(seed2,[batch_size,max_size,64])
 	
 	x = residual_block('generator.res1.filter1','generator.res1.bias1','generator.res1.filter2','generator.res1.bias2','generator',64,64,seed2)
-	if training: x = batchnorm(x,'generator.batchnorm1.offset','generator.batchnorm1.scale','generator')
-	
 	x = residual_block('generator.res2.filter1','generator.res2.bias1','generator.res2.filter2','generator.res2.bias2','generator',64,64,x)
-	if training: x = batchnorm(x,'generator.batchnorm2.offset','generator.batchnorm2.scale','generator')
-	
 	x = residual_block('generator.res3.filter1','generator.res3.bias1','generator.res3.filter2','generator.res3.bias2','generator',64,64,x)
-	if training: x = batchnorm(x,'generator.batchnorm3.offset','generator.batchnorm3.scale','generator')
-	
 	x = residual_block('generator.res4.filter1','generator.res4.bias1','generator.res4.filter2','generator.res4.bias2','generator',64,64,x)
-	if training: x = batchnorm(x,'generator.batchnorm4.offset','generator.batchnorm4.scale','generator')
-	
 	x = residual_block('generator.res5.filter1','generator.res5.bias1','generator.res5.filter2','generator.res5.bias2','generator',64,64,x)
-	if training: x = batchnorm(x,'generator.batchnorm5.offset','generator.batchnorm5.scale','generator')
 
 	x = conv('generator.conv1.filter','generator.conv1.bias','generator',(5,64,encode_length),x)
 	
-	synthetic = tf.nn.softmax(x)
-	return synthetic
+	return x
 
 # Discriminator
 
@@ -240,7 +230,7 @@ for epoch in range(epochs):
 	print("Discriminator loss: ",d_loss)
 		
 	# Print a sample string	
-	prediction = sess.run(generator(tf.random_normal((batch_size,100)),training=False))[0]
+	prediction = sess.run(tf.softmax(generator(tf.random_normal((batch_size,100)),training=False)))[0]
 	sequence = []
 	sequence_string = ''
 	for i in range(len(prediction)):
