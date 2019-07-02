@@ -1,0 +1,2 @@
+model_checkpoint_path: "/home/ceolson0/Documents/flu/models/gan/mnist/saves/layernorm_mnist/"
+all_model_checkpoint_paths: "/home/ceolson0/Documents/flu/models/gan/mnist/saves/layernorm_mnist/"
