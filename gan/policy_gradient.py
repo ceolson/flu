@@ -153,7 +153,7 @@ def generate_full(noise=[tf.random_normal((batch_size,latent_dim)),tf.random_nor
     state = noise
     for i in range(max_size):
         temp,h,c = generator_lstm(seqs,initial_state=state)
-        seqs = tf.concat((seqs,tf.reshape(temp,(int(batch_size/2),1,encode_length))),axis=1)
+        seqs = tf.concat((seqs,tf.reshape(temp,(batch_size,1,encode_length))),axis=1)
         state = [h,c]
     return seqs
         

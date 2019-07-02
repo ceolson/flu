@@ -239,9 +239,6 @@ loss_predictor = tf.reduce_mean(loss_predictor)
 optimizer_predictor = tf.train.GradientDescentOptimizer(0.01)
 train_predictor = optimizer.minimize(loss_predictor,var_list=tf.get_collection('predictor'))
 
-init = tf.initializers.variables(tf.get_collection('predictor'))
-
-saver = tf.train.Saver(tf.get_collection('predictor'))
 
 
 with tf.variable_scope('',reuse=tf.AUTO_REUSE):
@@ -253,13 +250,14 @@ with tf.variable_scope('',reuse=tf.AUTO_REUSE):
 	tune = tf.train.GradientDescentOptimizer(0.001).minimize(loss_backtoback_tuner,var_list=[tf.get_variable('n_input')])
 
 sess.run(tf.global_variables_initializer())
-saver = tf.train.Saver(tf.all_variables())
+saver_vae = tf.train.Saver(tf.get_collection('encoder')+tf.get_collection('decoder'))
+saver_predictor = tf.train.Saver(tf.get_collection('predictor'))
 
 print('#######################################')
 print(np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()]))
 
 print('Training variational autoencoder')
-epochs = 1000
+epochs = 200
 for epoch in range(epochs):
 	b = np.tanh((epoch-epochs*0.4)/(epochs*0.1))*0.5+0.5
 	batch_sequences = np.random.permutation(train_sequences)[:batch_size]
@@ -267,16 +265,9 @@ for epoch in range(epochs):
 	if epoch%10==0: 
 		print('epoch',epoch,'loss',l)
 		prediction = sess.run(decoder(tf.random_normal([batch_size,latent_dim]),training=False))[0]
-		sequence = []
-		sequence_string = ''
-		for i in range(len(prediction)):
-			index = np.argmax(prediction[i])
-			residue = ORDER[index]
-			sequence.append(residue)
-			sequence_string += residue
-		print(sequence_string)
-	if epoch%1000==0:
-		saver.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_mini/')
+		print(convert_to_string(prediction))
+	if epoch%1000==999:
+		saver_vae.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_vae/')
 
 
 print('Training predictor')
@@ -289,6 +280,7 @@ for epoch in range(epochs):
 	if epoch%100 == 0:
 		print('Epoch', epoch)
 		print('loss:', l)
+saver_predictor.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_predictor/')
 
 print('Tuning')
 for i in range(100):
