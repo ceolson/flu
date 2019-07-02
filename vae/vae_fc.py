@@ -245,7 +245,7 @@ with tf.variable_scope('',reuse=tf.AUTO_REUSE):
 	n_input = tf.get_variable('n_input',trainable=True,shape=[batch_size,latent_dim])
 	produced_tuner = decoder(n_input)
 	predicted_subtype_tuner = predictor(produced_tuner)
-	target_tuner = tf.stack([[0.,0.,0.,0.,1.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.] for i in range(batch_size)],axis=0)
+	target_tuner = tf.stack([[0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,1.,0.,0.,0.,0.] for i in range(batch_size)],axis=0)
 	loss_backtoback_tuner = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner,predicted_subtype_tuner))
 	tune = tf.train.GradientDescentOptimizer(0.001).minimize(loss_backtoback_tuner,var_list=[tf.get_variable('n_input')])
 
@@ -257,6 +257,7 @@ print('#######################################')
 print(np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()]))
 
 print('Training variational autoencoder')
+saver_vae.restore(sess,'/home/ceolson0/Documents/flu/models/vae_fc_vae/')
 epochs = 200
 for epoch in range(epochs):
 	b = np.tanh((epoch-epochs*0.4)/(epochs*0.1))*0.5+0.5
@@ -266,27 +267,29 @@ for epoch in range(epochs):
 		print('epoch',epoch,'loss',l)
 		prediction = sess.run(decoder(tf.random_normal([batch_size,latent_dim]),training=False))[0]
 		print(convert_to_string(prediction))
-	if epoch%1000==999:
-		saver_vae.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_vae/')
-
+saver_vae.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_vae/')
+print('\n')
 
 print('Training predictor')
-epochs = 1500
-for epoch in range(epochs):
-	batch = np.random.permutation(range(len(train_sequences)))[:batch_size]
-	sequence_batch = train_sequences[batch].astype('float32')
-	label_batch = train_labels[batch].astype('float32')
-	_,l = sess.run([train_predictor,loss_predictor],feed_dict={input_sequence_predictor:sequence_batch,label_predictor:label_batch})
-	if epoch%100 == 0:
-		print('Epoch', epoch)
-		print('loss:', l)
-saver_predictor.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_predictor/')
+
+saver_predictor.restore(sess,'/home/ceolson0/Documents/flu/models/vae_fc_predictor/')
+# ~ epochs = 1500
+# ~ for epoch in range(epochs):
+	# ~ batch = np.random.permutation(range(len(train_sequences)))[:batch_size]
+	# ~ sequence_batch = train_sequences[batch].astype('float32')
+	# ~ label_batch = train_labels[batch].astype('float32')
+	# ~ _,l = sess.run([train_predictor,loss_predictor],feed_dict={input_sequence_predictor:sequence_batch,label_predictor:label_batch})
+	# ~ if epoch%100 == 0:
+		# ~ print('Epoch', epoch)
+		# ~ print('loss:', l)
+# ~ saver_predictor.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_predictor/')
 
 print('Tuning')
-for i in range(100):
-	print('='*(i+1)+'_'*(99-i)+'\r')
+for i in range(1000):
+	if i%10==0:
+		print('='*(int(i/10)+1)+'_'*(99-int(i/10))+'\r',end='')
 	sess.run(tune)
 
-tuned = sess.run(produced)[0]
+tuned = sess.run(produced_tuner)[0]
 print(convert_to_string(tuned))
 
