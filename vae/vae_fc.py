@@ -242,12 +242,14 @@ train_predictor = optimizer.minimize(loss_predictor,var_list=tf.get_collection('
 
 
 with tf.variable_scope('',reuse=tf.AUTO_REUSE):
-	n_input = tf.get_variable('n_input',trainable=True,shape=[batch_size,latent_dim])
-	produced_tuner = decoder(n_input)
-	predicted_subtype_tuner = predictor(produced_tuner)
-	target_tuner = tf.stack([[0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,1.,0.,0.,0.,0.] for i in range(batch_size)],axis=0)
-	loss_backtoback_tuner = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner,predicted_subtype_tuner))
-	tune = tf.train.GradientDescentOptimizer(0.001).minimize(loss_backtoback_tuner,var_list=[tf.get_variable('n_input')])
+	n_input = tf.get_variable('n_input',trainable=True,collections=['tuning_var',tf.GraphKeys.GLOBAL_VARIABLES],shape=[batch_size,latent_dim])
+	
+produced_tuner = decoder(n_input)
+predicted_subtype_tuner = predictor(produced_tuner)
+predicted_tuner = tf.nn.softmax(predicted_subtype_tuner)
+target_tuner = tf.stack([[0.,0.,1.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.] for i in range(batch_size)],axis=0)
+loss_backtoback_tuner = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner,predicted_subtype_tuner))
+tune = tf.train.AdamOptimizer().minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
 
 sess.run(tf.global_variables_initializer())
 saver_vae = tf.train.Saver(tf.get_collection('encoder')+tf.get_collection('decoder'))
@@ -258,7 +260,7 @@ print(np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()
 
 print('Training variational autoencoder')
 saver_vae.restore(sess,'/home/ceolson0/Documents/flu/models/vae_fc_vae/')
-epochs = 200
+epochs = 0
 for epoch in range(epochs):
 	b = np.tanh((epoch-epochs*0.4)/(epochs*0.1))*0.5+0.5
 	batch_sequences = np.random.permutation(train_sequences)[:batch_size]
@@ -273,23 +275,39 @@ print('\n')
 print('Training predictor')
 
 saver_predictor.restore(sess,'/home/ceolson0/Documents/flu/models/vae_fc_predictor/')
-# ~ epochs = 1500
-# ~ for epoch in range(epochs):
-	# ~ batch = np.random.permutation(range(len(train_sequences)))[:batch_size]
-	# ~ sequence_batch = train_sequences[batch].astype('float32')
-	# ~ label_batch = train_labels[batch].astype('float32')
-	# ~ _,l = sess.run([train_predictor,loss_predictor],feed_dict={input_sequence_predictor:sequence_batch,label_predictor:label_batch})
-	# ~ if epoch%100 == 0:
-		# ~ print('Epoch', epoch)
-		# ~ print('loss:', l)
-# ~ saver_predictor.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_predictor/')
+epochs = 0
+for epoch in range(epochs):
+	batch = np.random.permutation(range(len(train_sequences)))[:batch_size]
+	sequence_batch = train_sequences[batch].astype('float32')
+	label_batch = train_labels[batch].astype('float32')
+	_,l = sess.run([train_predictor,loss_predictor],feed_dict={input_sequence_predictor:sequence_batch,label_predictor:label_batch})
+	if epoch%100 == 0:
+		print('Epoch', epoch)
+		print('loss:', l)
+saver_predictor.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_predictor/')
+
+score = 0
+for i in range(100):
+	test_batch = np.random.permutation(range(len(test_sequences)))[:batch_size]
+	sequence_batch = test_sequences[test_batch].astype('float32')
+	label_batch = test_labels[test_batch].astype('float32')
+	p = sess.run(prediction_predictor,feed_dict={input_sequence_predictor:sequence_batch})
+	for j in range(batch_size):
+		if np.argmax(p[j]) == np.argmax(label_batch[j]):
+			score += 1
+	print(np.bincount([np.argmax(x) for x in p]))
+	print(np.bincount([np.argmax(x) for x in label_batch]))
+print('Predictor test score:',score/(100*batch_size)) 
+
+
 
 print('Tuning')
-for i in range(1000):
-	if i%10==0:
-		print('='*(int(i/10)+1)+'_'*(99-int(i/10))+'\r',end='')
-	sess.run(tune)
-
-tuned = sess.run(produced_tuner)[0]
-print(convert_to_string(tuned))
+for i in range(100000):
+	_,l,p = sess.run([tune,loss_backtoback_tuner,predicted_tuner])
+	if i%1000==0:
+		print('Epoch',i,'loss',l)
+		print(p[0])
+tuned = np.random.permutation(sess.run(produced_tuner))[0:5]
+for x in tuned:
+	print(convert_to_string(x))
 
