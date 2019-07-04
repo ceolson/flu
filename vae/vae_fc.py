@@ -5,12 +5,13 @@ from tensorflow.python import debug as tf_debug
 from deepchem.utils.genomics import encode_fasta_sequence
 from Bio import SeqIO
 import h5py
+import scipy
 
 ORDER = ['A','R','N','D','C','Q','E','G','H','I','L','K','M','F','P','S','T','W','Y','V','X','[']
 def convert_to_string(prediction):
 	string = ''
 	for i in range(len(prediction)):
-		prediction[i][-2] = 0
+		prediction[i][-2] = -np.inf
 		index = np.argmax(prediction[i])
 		residue = ORDER[index]
 		string += residue
@@ -88,7 +89,7 @@ max_size = len(train_sequences[0])
 encode_length = len(train_sequences[0][0])
 batch_size=100
 latent_dim = 100
-num_classes = 19
+num_classes = len(train_labels[0])
 
 print(np.shape(train_sequences))
 
@@ -260,16 +261,17 @@ print(np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()
 
 print('Training variational autoencoder')
 saver_vae.restore(sess,'/home/ceolson0/Documents/flu/models/vae_fc_vae/')
-epochs = 0
+epochs = 100000
 for epoch in range(epochs):
 	b = np.tanh((epoch-epochs*0.4)/(epochs*0.1))*0.5+0.5
 	batch_sequences = np.random.permutation(train_sequences)[:batch_size]
 	_,l = sess.run([train,loss],feed_dict={sequence_in:batch_sequences,correct_labels:batch_sequences,beta:b})
 	if epoch%10==0: 
 		print('epoch',epoch,'loss',l)
-		prediction = sess.run(decoder(tf.random_normal([batch_size,latent_dim]),training=False))[0]
+		prediction = sess.run(tf.nn.softmax(decoder(tf.random_normal([batch_size,latent_dim]),training=False)))[0]
 		print(convert_to_string(prediction))
-saver_vae.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_vae/')
+	if epoch%1000==0:
+		saver_vae.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_vae/')
 print('\n')
 
 print('Training predictor')
@@ -287,7 +289,7 @@ for epoch in range(epochs):
 saver_predictor.save(sess,'/home/ceolson0/Documents/flu/models/vae_fc_predictor/')
 
 score = 0
-for i in range(100):
+for i in range(0):
 	test_batch = np.random.permutation(range(len(test_sequences)))[:batch_size]
 	sequence_batch = test_sequences[test_batch].astype('float32')
 	label_batch = test_labels[test_batch].astype('float32')
@@ -300,9 +302,17 @@ for i in range(100):
 print('Predictor test score:',score/(100*batch_size)) 
 
 
+# ~ totals = np.array([[0 for i in range(encode_length)] for j in range(max_size)])
+# ~ for i in range(0):
+	# ~ print('>'*(i+1)+'.'*(99-i)+'\r')
+	# ~ prediction = sess.run(tf.nn.softmax(decoder(tf.random_normal([batch_size,latent_dim]),training=False)))
+	# ~ totals = totals + np.sum(prediction,axis=0)
+# ~ for i in range(max_size):
+	# ~ print(scipy.stats.entropy(totals[i]/(100*batch_size)),end=' ')
 
+epochs = 1000
 print('Tuning')
-for i in range(100000):
+for i in range(epochs):
 	_,l,p = sess.run([tune,loss_backtoback_tuner,predicted_tuner])
 	if i%1000==0:
 		print('Epoch',i,'loss',l)
