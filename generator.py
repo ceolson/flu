@@ -189,11 +189,11 @@ elif args.model == 'gan':
         seed2 = tf.nn.leaky_relu(seed2)
         seed2 = tf.reshape(seed2,[batch_size,max_size,16])
 
-        x = lyr.residual_block('generator.res1.filter1','generator.res1.bias1','generator.res1.filter2','generator.res1.bias2','generator',16,16,seed2)
-        x = lyr.residual_block('generator.res2.filter1','generator.res2.bias1','generator.res2.filter2','generator.res2.bias2','generator',16,16,x)
-        x = lyr.residual_block('generator.res3.filter1','generator.res3.bias1','generator.res3.filter2','generator.res3.bias2','generator',16,16,x)
-        x = lyr.residual_block('generator.res4.filter1','generator.res4.bias1','generator.res4.filter2','generator.res4.bias2','generator',16,16,x)
-        x = lyr.residual_block('generator.res5.filter1','generator.res5.bias1','generator.res5.filter2','generator.res5.bias2','generator',16,16,x)
+        x = lyr.residual_block('generator.res1.filter1','generator.res1.bias1','generator.res1.filter2','generator.res1.bias2','generator',16,16,seed2,max_size)
+        x = lyr.residual_block('generator.res2.filter1','generator.res2.bias1','generator.res2.filter2','generator.res2.bias2','generator',16,16,x,max_size)
+        x = lyr.residual_block('generator.res3.filter1','generator.res3.bias1','generator.res3.filter2','generator.res3.bias2','generator',16,16,x,max_size)
+        x = lyr.residual_block('generator.res4.filter1','generator.res4.bias1','generator.res4.filter2','generator.res4.bias2','generator',16,16,x,max_size)
+        x = lyr.residual_block('generator.res5.filter1','generator.res5.bias1','generator.res5.filter2','generator.res5.bias2','generator',16,16,x,max_size)
 
 
         x = lyr.conv('generator.lyr.conv1.filter','generator.lyr.conv1.bias','generator',(5,16,encode_length),x,max_size)
@@ -204,15 +204,15 @@ elif args.model == 'gan':
         x = lyr.conv('discriminator.lyr.conv1.filter','discriminator.lyr.conv1.bias','discriminator',(5,encode_length,16),sequence,max_size)
         x = tf.nn.leaky_relu(x)
         
-        x = lyr.residual_block('discriminator.res1.filter1','discriminator.res1.bias1','discriminator.res1.filter2','discriminator.res1.bias1','discriminator',16,16,x)
+        x = lyr.residual_block('discriminator.res1.filter1','discriminator.res1.bias1','discriminator.res1.filter2','discriminator.res1.bias1','discriminator',16,16,x,max_size)
         x = lyr.layernorm(x)
-        x = lyr.residual_block('discriminator.res2.filter1','discriminator.res2.bias1','discriminator.res2.filter2','discriminator.res2.bias1','discriminator',16,16,x)
+        x = lyr.residual_block('discriminator.res2.filter1','discriminator.res2.bias1','discriminator.res2.filter2','discriminator.res2.bias1','discriminator',16,16,x,max_size)
         x = lyr.layernorm(x)
-        x = lyr.residual_block('discriminator.res3.filter1','discriminator.res3.bias1','discriminator.res3.filter2','discriminator.res3.bias1','discriminator',16,16,x)
+        x = lyr.residual_block('discriminator.res3.filter1','discriminator.res3.bias1','discriminator.res3.filter2','discriminator.res3.bias1','discriminator',16,16,x,max_size)
         x = lyr.layernorm(x)
-        x = lyr.residual_block('discriminator.res4.filter1','discriminator.res4.bias1','discriminator.res4.filter2','discriminator.res4.bias1','discriminator',16,16,x)
+        x = lyr.residual_block('discriminator.res4.filter1','discriminator.res4.bias1','discriminator.res4.filter2','discriminator.res4.bias1','discriminator',16,16,x,max_size)
         x = lyr.layernorm(x)
-        x = lyr.residual_block('discriminator.res5.filter1','discriminator.res5.bias1','discriminator.res5.filter2','discriminator.res5.bias1','discriminator',16,16,x)
+        x = lyr.residual_block('discriminator.res5.filter1','discriminator.res5.bias1','discriminator.res5.filter2','discriminator.res5.bias1','discriminator',16,16,x,max_size)
         x = lyr.layernorm(x)
         
         x = tf.reshape(x,(batch_size,max_size*16))
@@ -256,11 +256,11 @@ elif args.tuner == 'subtype':
         x = lyr.conv('predictor.lyr.conv1.filter','predictor.lyr.conv1.bias','predictor',(5,encode_length,64),sequence,max_size)
         x = tf.nn.leaky_relu(x)
         
-        x = lyr.residual_block('predictor.res1.filter1','predictor.res1.bias1','predictor.res1.filter2','predictor.res1.bias1','predictor',64,64,x)
-        x = lyr.residual_block('predictor.res2.filter1','predictor.res2.bias1','predictor.res2.filter2','predictor.res2.bias1','predictor',64,64,x)
-        x = lyr.residual_block('predictor.res3.filter1','predictor.res3.bias1','predictor.res3.filter2','predictor.res3.bias1','predictor',64,64,x)
-        x = lyr.residual_block('predictor.res4.filter1','predictor.res4.bias1','predictor.res4.filter2','predictor.res4.bias1','predictor',64,64,x)
-        x = lyr.residual_block('predictor.res5.filter1','predictor.res5.bias1','predictor.res5.filter2','predictor.res5.bias1','predictor',64,64,x)
+        x = lyr.residual_block('predictor.res1.filter1','predictor.res1.bias1','predictor.res1.filter2','predictor.res1.bias1','predictor',64,64,x,max_size)
+        x = lyr.residual_block('predictor.res2.filter1','predictor.res2.bias1','predictor.res2.filter2','predictor.res2.bias1','predictor',64,64,x,max_size)
+        x = lyr.residual_block('predictor.res3.filter1','predictor.res3.bias1','predictor.res3.filter2','predictor.res3.bias1','predictor',64,64,x,max_size)
+        x = lyr.residual_block('predictor.res4.filter1','predictor.res4.bias1','predictor.res4.filter2','predictor.res4.bias1','predictor',64,64,x,max_size)
+        x = lyr.residual_block('predictor.res5.filter1','predictor.res5.bias1','predictor.res5.filter2','predictor.res5.bias1','predictor',64,64,x,max_size)
         
         x = tf.reshape(x,(batch_size,max_size*64))
         
@@ -484,31 +484,39 @@ print('#######################################')
 
 print('Training model')
 epochs = args.train_model_epochs
+num_batches = int(np.floor(len(train_sequences)))
 
 if args.model == 'vae_fc':
     for epoch in range(epochs):
-        b = 5*(np.tanh((epoch-epochs*0.4)/(epochs*0.1))*0.5+0.5)
-        batch_sequences = np.random.permutation(train_sequences)[:batch_size]
-        _,l = sess.run([train,loss],feed_dict={sequence_in:batch_sequences,correct_labels:batch_sequences,beta:b})
-        if epoch%int(epochs/100)==0: 
-            print('epoch',epoch,'loss',l)
-            prediction = sess.run(tf.nn.softmax(decoder(tf.random_normal([batch_size,latent_dim]),training=False)))[0]
-            print(cst.convert_to_string(prediction,ORDER))
-        if epoch%1000==0:
-            saver.save(sess,args.save)
+        shuffled_sequences = np.random.permutation(train_sequences)
+        for batch in range(num_batches):
+            batch_sequences = shuffled_sequences[batch*batch_size:(batch+1)*batch_size]
+            prev_iters = epoch*num_batches + batch
+            total_iters = epochs*num_batches
+            b = 5*(np.tanh((prev_iters-total_iters*0.4)/(total_iters*0.1))*0.5+0.5)
+            _,l = sess.run([train,loss],feed_dict={sequence_in:batch_sequences,correct_labels:batch_sequences,beta:b})
+            
+        print('epoch',epoch,'loss',l)
+        prediction = sess.run(tf.nn.softmax(decoder(tf.random_normal([batch_size,latent_dim]),training=False)))[0]
+        print(cst.convert_to_string(prediction,ORDER))
+        saver.save(sess,args.save)
 
 elif args.model == 'vae_lstm':
     for epoch in range(epochs):
-        b = 5*(np.tanh((epoch-epochs*0.4)/(epochs*0.1))*0.5+0.5)
-        stop_point = np.random.randint(2,max_size-1)
-        batch_sequences = np.random.permutation(train_sequences)[:batch_size,:1+stop_point]
-        _,l = sess.run([train,loss],feed_dict={sequence_in:batch_sequences[:,:-1],so_far_reconstructed:batch_sequences[:,:-2],correct_labels:batch_sequences[:,-1],beta:b})
-        if epoch%int(epochs/100)==0: 
-            print('epoch',epoch,'loss',l)
-            i = np.random.randint(0,max_size-1)
-            test = train_sequences[i:i+1]
-            print(rec(test))
-            saver.save(sess,args.save)
+        shuffled_sequences = np.random.permutation(train_sequences)
+        for batch in range(num_batches):
+            stop_point = np.random.randint(2,max_size-1)
+            batch_sequences = shuffled_sequences[batch*batch_size:(batch+1)*batch_size,:1+stop_point]
+            prev_iters = epoch*num_batches + batch
+            total_iters = epochs*num_batches
+            b = 5*(np.tanh((prev_iters-total_iters*0.4)/(total_iters*0.1))*0.5+0.5)
+            _,l = sess.run([train,loss],feed_dict={sequence_in:batch_sequences[:,:-1],so_far_reconstructed:batch_sequences[:,:-2],correct_labels:batch_sequences[:,-1],beta:b})
+
+        print('epoch',epoch,'loss',l)
+        i = np.random.randint(0,max_size-1)
+        test = train_sequences[i:i+1]
+        print(rec(test))
+        saver.save(sess,args.save)
 
 elif args.model == 'gan':
     for epoch in range(epochs):
@@ -547,26 +555,29 @@ epochs = args.train_predictor_epochs
 
 if args.tuner == 'head_stem':
     for epoch in range(epochs):
-        batch = np.random.permutation(range(len(train_sequences)))[:batch_size]
-        sequence_batch = train_sequences[batch].astype('float32')
-        sequence_batch_head = sequence_batch[:,cst,HEAD]
-        sequence_batch_stem = sequence_batch[:,cst.STEM]
-        label_batch = train_labels[batch].astype('float32')
-        _,_,lh,ls,ph,ps = sess.run([train_head,train_stem,loss_head,loss_stem,prediction_head,prediction_stem],feed_dict={input_sequence_head:sequence_batch_head,input_sequence_stem:sequence_batch_stem,label:label_batch})
-        if epoch%int(epochs/10) == 0:
-            print('Epoch', epoch)
-            print('loss:', lh,ls)
+        shuffle = np.random.permutation(range(len(train_sequences)))
+        for i in range(num_batches):
+            batch = shuffle[batch*batch_size:(batch+1)*batch_size]
+            sequence_batch = train_sequences[batch].astype('float32')
+            sequence_batch_head = sequence_batch[:,cst,HEAD]
+            sequence_batch_stem = sequence_batch[:,cst.STEM]
+            label_batch = train_labels[batch].astype('float32')
+            _,_,lh,ls,ph,ps = sess.run([train_head,train_stem,loss_head,loss_stem,prediction_head,prediction_stem],
+                                       feed_dict={input_sequence_head:sequence_batch_head,input_sequence_stem:sequence_batch_stem,label:label_batch})
+        print('Epoch', epoch)
+        print('loss:', lh,ls)
         saver.save(sess, args.save)
 
 elif args.tuner == 'subtype':
     for epoch in range(epochs):
-        batch = np.random.permutation(range(len(train_sequences)))[:batch_size]
-        sequence_batch = train_sequences[batch].astype('float32')
-        label_batch = train_labels[batch].astype('float32')
-        _,l = sess.run([train_predictor,loss_predictor],feed_dict={input_sequence_predictor:sequence_batch,label_predictor:label_batch})
-        if epoch%int(epochs/10) == 0:
-            print('Epoch', epoch)
-            print('loss:', l)
+        shuffle = np.random.permutation(range(len(train_sequences)))
+        for i in range(num_batches):
+            batch = shuffle[batch*batch_size:(batch+1)*batch_size]
+            sequence_batch = train_sequences[batch].astype('float32')
+            label_batch = train_labels[batch].astype('float32')
+            _,l = sess.run([train_predictor,loss_predictor],feed_dict={input_sequence_predictor:sequence_batch,label_predictor:label_batch})
+        print('Epoch', epoch)
+        print('loss:', l)
         saver.save(sess, args.save)
 
 print('\n')
