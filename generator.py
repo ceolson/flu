@@ -22,24 +22,38 @@ tf.keras.backend.set_session(sess)
 ### Arg parser
 parser = argparse.ArgumentParser()
 
-parser.add_argument('-d', '--data', type=str, help='data to train on, one of "all", "h1", "h2", "h3", ..., "h18", or "aligned" (others are not aligned)', default='all')
-parser.add_argument('-e', '--encoding', type=str, help='data encoding, either "categorical" or "blosum"', default='categorical')
-parser.add_argument('-m', '--model', type=str, help='model to use, one of "gan", "vae_fc", or "vae_lstm', default='vae_fc')
-parser.add_argument('-b', '--beta', type=float, help='if using a VAE, the value for beta', default=1)
-parser.add_argument('-t', '--tuner', type=str, help='what to tune for, one of "subtype", "head-stem", or "design"', default='design')
-parser.add_argument('--design', type=dict, help='if using design tuner, dictionary of where you want residues, e.g. "{15: \'R\', 334: \'C\'}"', default={1:'M'})
+parser.add_argument('--data', type=str, help='data to train on, one of "all", "h1", "h2", "h3", ..., "h18", or "aligned" (others are not aligned)', default='all')
+parser.add_argument('--encoding', type=str, help='data encoding, either "categorical" or "blosum"', default='categorical')
+parser.add_argument('--model', type=str, help='model to use, one of "gan", "vae_fc", or "vae_lstm"', default='vae_fc')
+parser.add_argument('--beta', type=float, help='if using a VAE, the value for beta', default=5)
+parser.add_argument('--tuner', type=str, help='what to tune for, one of "subtype", "head_stem", or "design"', default='design')
+parser.add_argument('--design', type=str, help='if using design tuner, list of residues and where you want them, e.g. "15-R,223-C"', default='1-M')
 parser.add_argument('--subtype', type=int, help='if using subtype tuner, which subtype you want', default=1)
-parser.add_argument('--head_stem', type=tuple, help='if using head-stem tuner, a tuple of (head_subtype, stem_subtype)', default=(1,1))
-parser.add_argument('--train_model_epochs', type=int, default=0)
-parser.add_argument('--train_predictor_epochs', type=int, default=0)
-parser.add_argument('--tune_epochs', type=int, default=0)
-parser.add_argument('--test_with_valid', action='store_true')
-parser.add_argument('--batch_size', type=int, default=100)
-parser.add_argument('--latent_dimension', type=int, default=100)
-parser.add_argument('--restore', help='saved file to restore from')
-parser.add_argument('--save', help='file to save to', default='/home/ceolson0/Documents/flu/saves/generic/')
+parser.add_argument('--head_stem', type=str, help='if using head-stem tuner, a string of "head_subtype, stem_subtype"', default='1,1')
+parser.add_argument('--train_model_epochs', type=int, help='how many epochs to train the generative model', default=0)
+parser.add_argument('--train_predictor_epochs', type=int, help='how many epochs to train the predictor model (if it is learned)', default=0)
+parser.add_argument('--tune_epochs', type=int, help='how many epochs to tune', default=0)
+parser.add_argument('--batch_size', type=int, help='batch size for training everything', default=100)
+parser.add_argument('--latent_dimension', type=int, help='latent dimension for everything', default=100)
+parser.add_argument('--restore_model', help='saved file to restore model from')
+parser.add_argument('--restore_predictor', help='saved file to restore predictor from')
+parser.add_argument('--save_model', help='where to save model to', default='/home/ceolson0/Documents/flu/saves/generic_model/')
+parser.add_argument('--save_predictor', help='where to save predictor to', default='/home/ceolson0/Documents/flu/saves/generic_predictor/')
 
 args = parser.parse_args()
+
+def design_parser(string):
+    design = {}
+    places = string.split(',')
+    for place in places:
+        location,residue = place.split('-')
+        location = int(location)
+        design[location] = residue
+    return design
+    
+def headstem_parser(string):
+    head,stem = map(int,string.split(','))
+    return head,stem
 
 if args.encoding == 'categorical':
     ORDER = cst.ORDER_CATEGORICAL
@@ -129,19 +143,19 @@ num_classes = len(train_labels[0])
 if args.model == 'vae_fc':
     def encoder(sequence,training=True):
         x = tf.reshape(sequence,[batch_size,max_size*encode_length])
-        x = lyr.dense('encoder.lyr.dense1.matrix','encoder.lyr.dense1.bias','encoder',max_size*encode_length,512,x)
+        x = lyr.dense('encoder.dense1.matrix','encoder.dense1.bias','encoder',max_size*encode_length,512,x)
         x = tf.nn.leaky_relu(x)
         if training: x = lyr.batchnorm(x,'encoder.batchnorm1.offset','encoder.batchnorm1.scale','encoder')
         
-        x = lyr.dense('encoder.lyr.dense2.matrix','encoder.lyr.dense2.bias','encoder',512,512,x)
+        x = lyr.dense('encoder.dense2.matrix','encoder.dense2.bias','encoder',512,512,x)
         x = tf.nn.leaky_relu(x)
         if training: x = lyr.batchnorm(x,'encoder.batchnorm2.offset','encoder.batchnorm2.scale','encoder')
         
-        x = lyr.dense('encoder.lyr.dense3.matrix','encoder.lyr.dense3.bias','encoder',512,256,x)
+        x = lyr.dense('encoder.dense3.matrix','encoder.dense3.bias','encoder',512,256,x)
         x = tf.nn.leaky_relu(x)
         if training: x = lyr.batchnorm(x,'encoder.batchnorm3.offset','encoder.batchnorm3.scale','encoder')
         
-        x = lyr.dense('encoder.lyr.dense4.matrix','encoder.lyr.dense4.bias','encoder',256,latent_dim*2,x)
+        x = lyr.dense('encoder.dense4.matrix','encoder.dense4.bias','encoder',256,latent_dim*2,x)
         x = tf.nn.leaky_relu(x)
         if training: x = lyr.batchnorm(x,'encoder.batchnorm4.offset','encoder.batchnorm4.scale','encoder')
 
@@ -149,20 +163,20 @@ if args.model == 'vae_fc':
 	
     def decoder(state,training=True):
         x = tf.reshape(state,[batch_size,-1])
-        x = lyr.dense('decoder.lyr.dense1.matrix','decoder.lyr.dense1.bias','decoder',latent_dim,512,x)
+        x = lyr.dense('decoder.dense1.matrix','decoder.dense1.bias','decoder',latent_dim,512,x)
         x = tf.nn.leaky_relu(x)
         if training: x = lyr.batchnorm(x,'decoder.batchnorm1.offset','decoder.batchnorm1.scale','decoder')
 
-        x = lyr.dense('decoder.lyr.dense2.matrix','decoder.lyr.dense2.bias','decoder',512,512,x)
+        x = lyr.dense('decoder.dense2.matrix','decoder.dense2.bias','decoder',512,512,x)
         x = tf.nn.leaky_relu(x)
         if training: x = lyr.batchnorm(x,'decoder.batchnorm2.offset','decoder.batchnorm2.scale','decoder')
 
         
-        x = lyr.dense('decoder.lyr.dense3.matrix','decoder.lyr.dense3.bias','decoder',512,256,x)
+        x = lyr.dense('decoder.dense3.matrix','decoder.dense3.bias','decoder',512,256,x)
         x = tf.nn.leaky_relu(x)
         if training: x = lyr.batchnorm(x,'decoder.batchnorm3.offset','decoder.batchnorm3.scale','decoder')
 
-        x = lyr.dense('decoder.lyr.dense4.matrix','decoder.lyr.dense4.bias','decoder',256,max_size*encode_length,x)
+        x = lyr.dense('decoder.dense4.matrix','decoder.dense4.bias','decoder',256,max_size*encode_length,x)
         x = tf.reshape(x,[batch_size,max_size,encode_length])
         if training: x = lyr.batchnorm(x,'decoder.batchnorm4.offset','decoder.batchnorm4.scale','decoder')
 
@@ -178,14 +192,14 @@ elif args.model == 'vae_lstm':
     
     def decoder(state,so_far):
         out = decoder_lstm(so_far,initial_state=state)
-        logits = lyr.dense('decoder.lyr.dense.matrix','decoder.lyr.dense.bias','decoder',latent_dim,encode_length,out)
+        logits = lyr.dense('decoder.dense.matrix','decoder.dense.bias','decoder',latent_dim,encode_length,out)
         return logits
 
 elif args.model == 'gan':
     def generator(seed,training=True):
         seed = tf.reshape(seed,(batch_size,100))
         
-        seed2 = lyr.dense('generator.lyr.dense1.matrix','generator.lyr.dense1.bias','generator',100,max_size*16,seed)
+        seed2 = lyr.dense('generator.dense1.matrix','generator.dense1.bias','generator',100,max_size*16,seed)
         seed2 = tf.nn.leaky_relu(seed2)
         seed2 = tf.reshape(seed2,[batch_size,max_size,16])
 
@@ -196,12 +210,12 @@ elif args.model == 'gan':
         x = lyr.residual_block('generator.res5.filter1','generator.res5.bias1','generator.res5.filter2','generator.res5.bias2','generator',16,16,x,max_size)
 
 
-        x = lyr.conv('generator.lyr.conv1.filter','generator.lyr.conv1.bias','generator',(5,16,encode_length),x,max_size)
+        x = lyr.conv('generator.conv1.filter','generator.conv1.bias','generator',(5,16,encode_length),x,max_size)
         x = tf.nn.softmax(x)
         return x
 
     def discriminator(sequence):
-        x = lyr.conv('discriminator.lyr.conv1.filter','discriminator.lyr.conv1.bias','discriminator',(5,encode_length,16),sequence,max_size)
+        x = lyr.conv('discriminator.conv1.filter','discriminator.conv1.bias','discriminator',(5,encode_length,16),sequence,max_size)
         x = tf.nn.leaky_relu(x)
         
         x = lyr.residual_block('discriminator.res1.filter1','discriminator.res1.bias1','discriminator.res1.filter2','discriminator.res1.bias1','discriminator',16,16,x,max_size)
@@ -217,12 +231,12 @@ elif args.model == 'gan':
         
         x = tf.reshape(x,(batch_size,max_size*16))
         
-        output = lyr.dense('discriminator.lyr.dense1.matrix','discriminator.lyr.dense1.bias','discriminator',max_size*16,1,x)
+        output = lyr.dense('discriminator.dense1.matrix','discriminator.dense1.bias','discriminator',max_size*16,1,x)
         return output
         
 if args.tuner == 'head_stem':
     def predictor_head(sequence):
-        x = lyr.conv('predictor_head.lyr.conv1.filter','predictor_head.lyr.conv1.bias','predictor_head',(5,encode_length,64),sequence,head_size)
+        x = lyr.conv('predictor_head.conv1.filter','predictor_head.conv1.bias','predictor_head',(5,encode_length,64),sequence,head_size)
         x = tf.nn.leaky_relu(x)
         
         x = lyr.residual_block('predictor_head.res1.filter1','predictor_head.res1.bias1','predictor_head.res1.filter2','predictor_head.res1.bias1','predictor_head',64,64,x,head_size)
@@ -233,11 +247,11 @@ if args.tuner == 'head_stem':
         
         x = tf.reshape(x,(batch_size,head_size*64))
         
-        output = lyr.dense('predictor_head.lyr.dense1.matrix','predictor_head.lyr.dense1.bias','predictor_head',head_size*64,num_classes,x)
+        output = lyr.dense('predictor_head.dense1.matrix','predictor_head.dense1.bias','predictor_head',head_size*64,num_classes,x)
         return output
         
     def predictor_stem(sequence):
-        x = lyr.conv('predictor_stem.lyr.conv1.filter','predictor_stem.lyr.conv1.bias','predictor_stem',(5,encode_length,64),sequence,stem_size)
+        x = lyr.conv('predictor_stem.conv1.filter','predictor_stem.conv1.bias','predictor_stem',(5,encode_length,64),sequence,stem_size)
         x = tf.nn.leaky_relu(x)
         
         x = lyr.residual_block('predictor_stem.res1.filter1','predictor_stem.res1.bias1','predictor_stem.res1.filter2','predictor_stem.res1.bias1','predictor_stem',64,64,x,stem_size)
@@ -248,12 +262,12 @@ if args.tuner == 'head_stem':
         
         x = tf.reshape(x,(batch_size,stem_size*64))
         
-        output = lyr.dense('predictor_stem.lyr.dense1.matrix','predictor_stem.lyr.dense1.bias','predictor_stem',stem_size*64,num_classes,x)
+        output = lyr.dense('predictor_stem.dense1.matrix','predictor_stem.dense1.bias','predictor_stem',stem_size*64,num_classes,x)
         return output    
 
 elif args.tuner == 'subtype':
     def predictor(sequence):
-        x = lyr.conv('predictor.lyr.conv1.filter','predictor.lyr.conv1.bias','predictor',(5,encode_length,64),sequence,max_size)
+        x = lyr.conv('predictor.conv1.filter','predictor.conv1.bias','predictor',(5,encode_length,64),sequence,max_size)
         x = tf.nn.leaky_relu(x)
         
         x = lyr.residual_block('predictor.res1.filter1','predictor.res1.bias1','predictor.res1.filter2','predictor.res1.bias1','predictor',64,64,x,max_size)
@@ -264,7 +278,7 @@ elif args.tuner == 'subtype':
         
         x = tf.reshape(x,(batch_size,max_size*64))
         
-        output = lyr.dense('predictor.lyr.dense1.matrix','predictor.lyr.dense1.bias','predictor',max_size*64,num_classes,x)
+        output = lyr.dense('predictor.dense1.matrix','predictor.dense1.bias','predictor',max_size*64,num_classes,x)
         return output
 
 ### Set up graph
@@ -277,7 +291,6 @@ def sample_from_latents(x):
 if args.model == 'vae_fc':
     sequence_in = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
     correct_labels = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
-    correct_labels_softmaxed = tf.nn.softmax(correct_labels)
     beta = tf.placeholder(dtype=tf.dtypes.float32)
 
     latent_seeds = encoder(sequence_in)
@@ -287,7 +300,7 @@ if args.model == 'vae_fc':
     logits = decoder(latent)
     predicted_character = tf.nn.softmax(logits)
 
-    accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels_softmaxed,logits)
+    accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels,logits)
 
     def compute_kl_loss(latent_seeds):
         means = latent_seeds[:,:latent_dim]
@@ -302,7 +315,7 @@ if args.model == 'vae_fc':
     loss = tf.reduce_mean(accuracy_loss + beta * kl_loss)
 
     optimizer = tf.train.AdamOptimizer()
-    train = optimizer.minimize(loss)
+    train = optimizer.minimize(loss,var_list=tf.get_collection('encoder')+tf.get_collection('decoder'))
     
 elif args.model == 'vae_lstm':
     sequence_in = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
@@ -337,7 +350,7 @@ elif args.model == 'vae_lstm':
     loss = tf.reduce_mean(accuracy_loss + beta*kl_loss)
 
     optimizer = tf.train.GradientDescentOptimizer(0.0001)
-    train = optimizer.minimize(loss)
+    train = optimizer.minimize(loss,var_list=encoder_lstm.weights+decoder_lstm.weights)
 
 elif args.model == 'gan':
     real_images = sequence_in
@@ -384,7 +397,7 @@ if args.tuner == 'design':
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
         n_input = tf.get_variable('n_input',trainable=True,collections=['tuning_var',tf.GraphKeys.GLOBAL_VARIABLES],shape=[batch_size,latent_dim])
 
-    DESIGN = args.design
+    DESIGN = design_parser(args.design)
     designed_indices = list(map(lambda x: x-1,list(DESIGN.keys())))
         
     produced_tuner = decoder(n_input)
@@ -429,8 +442,8 @@ if args.tuner == 'head_stem':
     predicted_head_tuner = tf.nn.softmax(predicted_head_subtype_tuner)
     predicted_stem_tuner = tf.nn.softmax(predicted_stem_subtype_tuner)
 
-    target_head_tuner = tf.stack([tf.constant(cst.TYPES[args.head_stem[0]]) for i in range(batch_size)],axis=0)
-    target_stem_tuner = tf.stack([tf.constant(cst.TYPES[args.head_stem[1]]) for i in range(batch_size)],axis=0)
+    target_head_tuner = tf.stack([tf.constant(cst.TYPES[headstem_parser(args.head_stem)[0]]) for i in range(batch_size)],axis=0)
+    target_stem_tuner = tf.stack([tf.constant(cst.TYPES[headstem_parser(args.head_stem)[1]]) for i in range(batch_size)],axis=0)
     loss_head_tuner = tf.nn.softmax_cross_entropy_with_logits_v2(target_head_tuner,predicted_head_subtype_tuner)
     loss_stem_tuner = tf.nn.softmax_cross_entropy_with_logits_v2(target_stem_tuner,predicted_stem_subtype_tuner)
 
@@ -475,16 +488,30 @@ def rec(sequence):
     return cst.convert_to_string(new_sequence[0])
     
 sess.run(tf.global_variables_initializer())
-saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES))
 
-if args.restore:
-    saver.restore(sess,args.restore)
+if args.model == 'vae_fc':
+    saver_model = tf.train.Saver(tf.get_collection('encoder') + tf.get_collection('decoder'))
+elif args.model == 'vae_lstm':
+    saver_model = tf.train.Saver(encoder_lstm.weights + decoder_lstm.weights)
+elif args.model == 'gan':
+    saver_model = tf.train.Saver(tf.get_collection('generator') + tf.get_collection('discriminator'))
+
+if args.restore_model:
+    saver_model.restore(sess,args.restore_model)
+
+if args.tuner == 'subtype':
+    saver_predictor = tf.train.Saver(tf.get_collection('predictor'))
+elif args.tuner == 'head_stem':
+    saver_predictor = tf.train.Saver(tf.get_collection('predictor_head') + tf.get_collection('predictor_stem'))
+    
+if args.restore_predictor:
+    saver_predictor.restore(sess,args.restore_predictor)
 
 print('#######################################')
 
 print('Training model')
 epochs = args.train_model_epochs
-num_batches = int(np.floor(len(train_sequences)))
+num_batches = int(np.floor(len(train_sequences)/batch_size))
 
 if args.model == 'vae_fc':
     for epoch in range(epochs):
@@ -499,7 +526,7 @@ if args.model == 'vae_fc':
         print('epoch',epoch,'loss',l)
         prediction = sess.run(tf.nn.softmax(decoder(tf.random_normal([batch_size,latent_dim]),training=False)))[0]
         print(cst.convert_to_string(prediction,ORDER))
-        saver.save(sess,args.save)
+        saver_model.save(sess,args.save_model)
 
 elif args.model == 'vae_lstm':
     for epoch in range(epochs):
@@ -516,7 +543,7 @@ elif args.model == 'vae_lstm':
         i = np.random.randint(0,max_size-1)
         test = train_sequences[i:i+1]
         print(rec(test))
-        saver.save(sess,args.save)
+        saver_model.save(sess,args.save_model)
 
 elif args.model == 'gan':
     for epoch in range(epochs):
@@ -546,7 +573,7 @@ elif args.model == 'gan':
         # Print a sample string    
         prediction = sess.run(generator(tf.random_normal((batch_size,100)),training=False))[0]
         print(cst.convert_to_string(prediction, ORDER))
-        saver.save(sess, args.save)
+        saver_model.save(sess, args.save_model)
 
 print('\n')        
 print('Training predictor')
@@ -557,16 +584,16 @@ if args.tuner == 'head_stem':
     for epoch in range(epochs):
         shuffle = np.random.permutation(range(len(train_sequences)))
         for i in range(num_batches):
-            batch = shuffle[batch*batch_size:(batch+1)*batch_size]
+            batch = shuffle[i*batch_size:(i+1)*batch_size]
             sequence_batch = train_sequences[batch].astype('float32')
-            sequence_batch_head = sequence_batch[:,cst,HEAD]
+            sequence_batch_head = sequence_batch[:,cst.HEAD]
             sequence_batch_stem = sequence_batch[:,cst.STEM]
             label_batch = train_labels[batch].astype('float32')
             _,_,lh,ls,ph,ps = sess.run([train_head,train_stem,loss_head,loss_stem,prediction_head,prediction_stem],
                                        feed_dict={input_sequence_head:sequence_batch_head,input_sequence_stem:sequence_batch_stem,label:label_batch})
         print('Epoch', epoch)
         print('loss:', lh,ls)
-        saver.save(sess, args.save)
+        saver_predictor.save(sess, args.save_predictor)
 
 elif args.tuner == 'subtype':
     for epoch in range(epochs):
@@ -578,7 +605,7 @@ elif args.tuner == 'subtype':
             _,l = sess.run([train_predictor,loss_predictor],feed_dict={input_sequence_predictor:sequence_batch,label_predictor:label_batch})
         print('Epoch', epoch)
         print('loss:', l)
-        saver.save(sess, args.save)
+        saver_predictor.save(sess, args.save_predictor)
 
 print('\n')
 print('Tuning')
@@ -606,6 +633,5 @@ elif args.tuner == 'subtype':
             print('Epoch',i,'loss',l)
             print(p[0])
             
-tuned = np.random.permutation(sess.run(produced_tuner))
-for x in tuned:
-    print(cst.convert_to_string(x, ORDER))
+tuned = sess.run(produced_tuner)[0]
+print(cst.convert_to_string(tuned, ORDER))

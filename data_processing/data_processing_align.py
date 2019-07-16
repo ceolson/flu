@@ -127,10 +127,12 @@ arr = [line for line in fastas]
 arr_new = []
 for elt in arr:
     try:
-        int(elt.id[1])
-        arr_new.append(elt)
+        if int(elt.id[1]) == 3:
+            arr_new.append(elt)
     except:
         pass
+        
+
 
 rand_arr_new = np.random.permutation(arr_new)
 for sequence in rand_arr_new:
