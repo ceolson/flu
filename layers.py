@@ -18,7 +18,7 @@ def batchnorm(sequence,offset_name,scale_name,collection):
     
     return normalized
     
-def layernorm(sequence):
+def layernorm(sequence,batch_size):
     means,variances = tf.nn.moments(sequence,axes=[1,2])
     means = tf.reshape(means,[batch_size,1,1])
     variances = tf.reshape(variances,[batch_size,1,1])

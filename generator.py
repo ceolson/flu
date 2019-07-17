@@ -57,8 +57,10 @@ def headstem_parser(string):
 
 if args.encoding == 'categorical':
     ORDER = cst.ORDER_CATEGORICAL
+    CATEGORIES = cst.CATEGORIES
 elif args.encoding == 'blosum':
     ORDER = cst.ORDER_BLOSUM
+    CATEGORIES = cst.BLOSUM
 
 ### Collect data
 f = h5py.File('/projects/ml/flu/fludb_data/processed_data_525916981168.h5','r')
@@ -99,19 +101,19 @@ if args.data != 'all':
     
     temp = []
     for i in range(len(train_sequences)):
-        if train_labels[i] == subtype:
+        if np.argmax(train_labels[i]) == subtype:
             temp.append(train_sequences[i])
     train_sequences = np.array(temp)
     
     temp = []
     for i in range(len(valid_sequences)):
-        if valid_labels[i] == subtype:
+        if np.argmax(valid_labels[i]) == subtype:
             temp.append(valid_sequences[i])
     valid_sequences = np.array(temp)
     
     temp = []
     for i in range(len(test_sequences)):
-        if test_labels[i] == subtype:
+        if np.argmax(test_labels[i]) == subtype:
             temp.append(test_sequences[i])
     test_sequences = np.array(temp)
 
@@ -199,39 +201,39 @@ elif args.model == 'gan':
     def generator(seed,training=True):
         seed = tf.reshape(seed,(batch_size,100))
         
-        seed2 = lyr.dense('generator.dense1.matrix','generator.dense1.bias','generator',100,max_size*16,seed)
+        seed2 = lyr.dense('generator.dense1.matrix','generator.dense1.bias','generator',100,max_size*64,seed)
         seed2 = tf.nn.leaky_relu(seed2)
-        seed2 = tf.reshape(seed2,[batch_size,max_size,16])
+        seed2 = tf.reshape(seed2,[batch_size,max_size,64])
 
-        x = lyr.residual_block('generator.res1.filter1','generator.res1.bias1','generator.res1.filter2','generator.res1.bias2','generator',16,16,seed2,max_size)
-        x = lyr.residual_block('generator.res2.filter1','generator.res2.bias1','generator.res2.filter2','generator.res2.bias2','generator',16,16,x,max_size)
-        x = lyr.residual_block('generator.res3.filter1','generator.res3.bias1','generator.res3.filter2','generator.res3.bias2','generator',16,16,x,max_size)
-        x = lyr.residual_block('generator.res4.filter1','generator.res4.bias1','generator.res4.filter2','generator.res4.bias2','generator',16,16,x,max_size)
-        x = lyr.residual_block('generator.res5.filter1','generator.res5.bias1','generator.res5.filter2','generator.res5.bias2','generator',16,16,x,max_size)
+        x = lyr.residual_block('generator.res1.filter1','generator.res1.bias1','generator.res1.filter2','generator.res1.bias2','generator',64,64,seed2,max_size)
+        x = lyr.residual_block('generator.res2.filter1','generator.res2.bias1','generator.res2.filter2','generator.res2.bias2','generator',64,64,x,max_size)
+        x = lyr.residual_block('generator.res3.filter1','generator.res3.bias1','generator.res3.filter2','generator.res3.bias2','generator',64,64,x,max_size)
+        x = lyr.residual_block('generator.res4.filter1','generator.res4.bias1','generator.res4.filter2','generator.res4.bias2','generator',64,64,x,max_size)
+        x = lyr.residual_block('generator.res5.filter1','generator.res5.bias1','generator.res5.filter2','generator.res5.bias2','generator',64,64,x,max_size)
 
 
-        x = lyr.conv('generator.conv1.filter','generator.conv1.bias','generator',(5,16,encode_length),x,max_size)
+        x = lyr.conv('generator.conv1.filter','generator.conv1.bias','generator',(5,64,encode_length),x,max_size)
         x = tf.nn.softmax(x)
         return x
 
     def discriminator(sequence):
-        x = lyr.conv('discriminator.conv1.filter','discriminator.conv1.bias','discriminator',(5,encode_length,16),sequence,max_size)
+        x = lyr.conv('discriminator.conv1.filter','discriminator.conv1.bias','discriminator',(5,encode_length,64),sequence,max_size)
         x = tf.nn.leaky_relu(x)
         
-        x = lyr.residual_block('discriminator.res1.filter1','discriminator.res1.bias1','discriminator.res1.filter2','discriminator.res1.bias1','discriminator',16,16,x,max_size)
-        x = lyr.layernorm(x)
-        x = lyr.residual_block('discriminator.res2.filter1','discriminator.res2.bias1','discriminator.res2.filter2','discriminator.res2.bias1','discriminator',16,16,x,max_size)
-        x = lyr.layernorm(x)
-        x = lyr.residual_block('discriminator.res3.filter1','discriminator.res3.bias1','discriminator.res3.filter2','discriminator.res3.bias1','discriminator',16,16,x,max_size)
-        x = lyr.layernorm(x)
-        x = lyr.residual_block('discriminator.res4.filter1','discriminator.res4.bias1','discriminator.res4.filter2','discriminator.res4.bias1','discriminator',16,16,x,max_size)
-        x = lyr.layernorm(x)
-        x = lyr.residual_block('discriminator.res5.filter1','discriminator.res5.bias1','discriminator.res5.filter2','discriminator.res5.bias1','discriminator',16,16,x,max_size)
-        x = lyr.layernorm(x)
+        x = lyr.residual_block('discriminator.res1.filter1','discriminator.res1.bias1','discriminator.res1.filter2','discriminator.res1.bias1','discriminator',64,64,x,max_size)
+        x = lyr.layernorm(x,batch_size)
+        x = lyr.residual_block('discriminator.res2.filter1','discriminator.res2.bias1','discriminator.res2.filter2','discriminator.res2.bias1','discriminator',64,64,x,max_size)
+        x = lyr.layernorm(x,batch_size)
+        x = lyr.residual_block('discriminator.res3.filter1','discriminator.res3.bias1','discriminator.res3.filter2','discriminator.res3.bias1','discriminator',64,64,x,max_size)
+        x = lyr.layernorm(x,batch_size)
+        x = lyr.residual_block('discriminator.res4.filter1','discriminator.res4.bias1','discriminator.res4.filter2','discriminator.res4.bias1','discriminator',64,64,x,max_size)
+        x = lyr.layernorm(x,batch_size)
+        x = lyr.residual_block('discriminator.res5.filter1','discriminator.res5.bias1','discriminator.res5.filter2','discriminator.res5.bias1','discriminator',64,64,x,max_size)
+        x = lyr.layernorm(x,batch_size)
         
-        x = tf.reshape(x,(batch_size,max_size*16))
+        x = tf.reshape(x,(batch_size,max_size*64))
         
-        output = lyr.dense('discriminator.dense1.matrix','discriminator.dense1.bias','discriminator',max_size*16,1,x)
+        output = lyr.dense('discriminator.dense1.matrix','discriminator.dense1.bias','discriminator',max_size*64,1,x)
         return output
         
 if args.tuner == 'head_stem':
@@ -291,6 +293,9 @@ def sample_from_latents(x):
 if args.model == 'vae_fc':
     sequence_in = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
     correct_labels = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
+
+    correct_labels_softmax = tf.nn.softmax(correct_labels)
+    
     beta = tf.placeholder(dtype=tf.dtypes.float32)
 
     latent_seeds = encoder(sequence_in)
@@ -299,8 +304,11 @@ if args.model == 'vae_fc':
 
     logits = decoder(latent)
     predicted_character = tf.nn.softmax(logits)
-
-    accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels,logits)
+    
+    if args.encoding == 'categorical':
+        accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels,logits)
+    elif args.encoding == 'blosum':
+        accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels_softmax,logits)
 
     def compute_kl_loss(latent_seeds):
         means = latent_seeds[:,:latent_dim]
@@ -315,12 +323,15 @@ if args.model == 'vae_fc':
     loss = tf.reduce_mean(accuracy_loss + beta * kl_loss)
 
     optimizer = tf.train.AdamOptimizer()
-    train = optimizer.minimize(loss,var_list=tf.get_collection('encoder')+tf.get_collection('decoder'))
+    train = optimizer.minimize(loss)
     
 elif args.model == 'vae_lstm':
     sequence_in = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
     so_far_reconstructed = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
     correct_labels = tf.placeholder(shape=[batch_size,encode_length],dtype=tf.dtypes.float32)
+    
+    correct_labels_softmax = tf.nn.softmax(correct_labels)
+    
     beta = tf.placeholder(float)
 
     latent_seeds_h,latent_seeds_c = encoder(sequence_in,encoder_lstm)
@@ -331,7 +342,10 @@ elif args.model == 'vae_lstm':
     logits = decoder(latent,so_far_reconstructed,decoder_lstm)
     predicted_character = tf.nn.softmax(logits)
 
-    accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels,logits)
+    if args.encoding == 'categorical':
+        accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels,logits)
+    elif args.encoding == 'blosum':
+        accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels_softmax,logits)
 
     def compute_kl_loss(latent_h_seeds,latent_c_seeds):
         means_h = latent_h_seeds[:,:latent_dim]
@@ -353,7 +367,7 @@ elif args.model == 'vae_lstm':
     train = optimizer.minimize(loss,var_list=encoder_lstm.weights+decoder_lstm.weights)
 
 elif args.model == 'gan':
-    real_images = sequence_in
+    real_images = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
     noise = tf.placeholder(float,name='noise')
 
     fake_images = generator(noise)
@@ -399,11 +413,17 @@ if args.tuner == 'design':
 
     DESIGN = design_parser(args.design)
     designed_indices = list(map(lambda x: x-1,list(DESIGN.keys())))
+    
+    if args.model == 'gan':
+        produced_tuner = generator(n_input)
+    else:
+        produced_tuner = decoder(n_input)
+
+    if args.encoding == 'blosum':
+        target_tuner = [tf.nn.softmax(CATEGORIES[DESIGN[key]]) for key in DESIGN.keys()]
+    else: 
+        target_tuner = [CATEGORIES[DESIGN[key]] for key in DESIGN.keys()]
         
-    produced_tuner = decoder(n_input)
-
-    target_tuner = [cst.CATEGORIES[DESIGN[key]] for key in DESIGN.keys()]
-
     loss_backtoback_tuner = 0
     for i in range(len(DESIGN.keys())):
         temp = tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner[i],produced_tuner[0,designed_indices[i]])
@@ -436,7 +456,11 @@ if args.tuner == 'head_stem':
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
         n_input = tf.get_variable('n_input',trainable=True,collections=['tuning_var',tf.GraphKeys.GLOBAL_VARIABLES],shape=[batch_size,latent_dim])
         
-    produced_tuner = tf.nn.softmax(decoder(n_input))
+    if args.model == 'gan':
+        produced_tuner = tf.nn.softmax(generator(n_input))
+    else:
+        produced_tuner = tf.nn.softmax(decoder(n_input))
+    
     predicted_head_subtype_tuner = predictor_head(produced_tuner[:,132:277])
     predicted_stem_subtype_tuner = predictor_stem(tf.concat([produced_tuner[:,:132],produced_tuner[:,277:]],axis=1))
     predicted_head_tuner = tf.nn.softmax(predicted_head_subtype_tuner)
@@ -460,17 +484,21 @@ if args.tuner == 'subtype':
     loss_predictor = tf.reduce_mean(loss_predictor)
 
     optimizer_predictor = tf.train.GradientDescentOptimizer(0.01)
-    train_predictor = optimizer.minimize(loss_predictor,var_list=tf.get_collection('predictor'))
+    train_predictor = optimizer_predictor.minimize(loss_predictor,var_list=tf.get_collection('predictor'))
     
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
         n_input = tf.get_variable('n_input',trainable=True,collections=['tuning_var',tf.GraphKeys.GLOBAL_VARIABLES],shape=[batch_size,latent_dim])
         
-    produced_tuner = tf.nn.softmax(decoder(n_input))
+    if args.model == 'gan':
+        produced_tuner = tf.nn.softmax(generator(n_input))
+    else:
+        produced_tuner = tf.nn.softmax(decoder(n_input))
+        
     predicted_subtype_tuner = predictor(produced_tuner)
     predicted_tuner = tf.nn.softmax(predicted_subtype_tuner)
     target_tuner = tf.stack([tf.constant(cst.TYPES[args.subtype]) for i in range(batch_size)],axis=0)
     loss_backtoback_tuner = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner,predicted_subtype_tuner))
-    tune = tf.train.GradientDescentOptimizer(0.01).minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
+    tune = tf.train.AdamOptimizer().minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
 
 ### Run
 
@@ -520,7 +548,10 @@ if args.model == 'vae_fc':
             batch_sequences = shuffled_sequences[batch*batch_size:(batch+1)*batch_size]
             prev_iters = epoch*num_batches + batch
             total_iters = epochs*num_batches
-            b = 5*(np.tanh((prev_iters-total_iters*0.4)/(total_iters*0.1))*0.5+0.5)
+            if args.restore_model:
+                b = args.beta
+            else:
+                b = args.beta*(np.tanh((prev_iters-total_iters*0.4)/(total_iters*0.1))*0.5+0.5)
             _,l = sess.run([train,loss],feed_dict={sequence_in:batch_sequences,correct_labels:batch_sequences,beta:b})
             
         print('epoch',epoch,'loss',l)
@@ -536,7 +567,10 @@ elif args.model == 'vae_lstm':
             batch_sequences = shuffled_sequences[batch*batch_size:(batch+1)*batch_size,:1+stop_point]
             prev_iters = epoch*num_batches + batch
             total_iters = epochs*num_batches
-            b = 5*(np.tanh((prev_iters-total_iters*0.4)/(total_iters*0.1))*0.5+0.5)
+            if args.restore_model:
+                b = args.beta
+            else:
+                b = args.beta*(np.tanh((prev_iters-total_iters*0.4)/(total_iters*0.1))*0.5+0.5)
             _,l = sess.run([train,loss],feed_dict={sequence_in:batch_sequences[:,:-1],so_far_reconstructed:batch_sequences[:,:-2],correct_labels:batch_sequences[:,-1],beta:b})
 
         print('epoch',epoch,'loss',l)
@@ -571,7 +605,7 @@ elif args.model == 'gan':
         print('Discriminator loss: ',d_loss)
             
         # Print a sample string    
-        prediction = sess.run(generator(tf.random_normal((batch_size,100)),training=False))[0]
+        prediction = sess.run(tf.nn.softmax(generator(tf.random_normal((batch_size,100)),training=False)))[0]
         print(cst.convert_to_string(prediction, ORDER))
         saver_model.save(sess, args.save_model)
 
@@ -599,13 +633,22 @@ elif args.tuner == 'subtype':
     for epoch in range(epochs):
         shuffle = np.random.permutation(range(len(train_sequences)))
         for i in range(num_batches):
-            batch = shuffle[batch*batch_size:(batch+1)*batch_size]
+            batch = shuffle[i*batch_size:(i+1)*batch_size]
             sequence_batch = train_sequences[batch].astype('float32')
             label_batch = train_labels[batch].astype('float32')
             _,l = sess.run([train_predictor,loss_predictor],feed_dict={input_sequence_predictor:sequence_batch,label_predictor:label_batch})
         print('Epoch', epoch)
         print('loss:', l)
         saver_predictor.save(sess, args.save_predictor)
+    fails = 0
+    for _ in range(100):
+        nums = np.random.permutation(range(len(test_sequences)))
+        batch = test_sequences[nums[:batch_size]]
+        preds = sess.run(prediction_predictor,feed_dict={input_sequence_predictor:batch})
+        for i in range(len(preds)):
+            if np.argmax(preds[i]) != np.argmax(test_labels[nums[i]]):
+                fails += 1
+    print((100*batch_size-fails)/(100*batch_size))
 
 print('\n')
 print('Tuning')
@@ -633,5 +676,7 @@ elif args.tuner == 'subtype':
             print('Epoch',i,'loss',l)
             print(p[0])
             
-tuned = sess.run(produced_tuner)[0]
-print(cst.convert_to_string(tuned, ORDER))
+tuned = sess.run(tf.nn.softmax(produced_tuner))
+for i in range(100):
+    print('>vae_categorical_sample{}'.format(i))
+    print(cst.convert_to_string(tuned[i], ORDER))

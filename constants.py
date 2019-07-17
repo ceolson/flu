@@ -87,8 +87,11 @@ ORDER_BLOSUM = ['A','R','N','D','C','Q','E','G','H','I','L','K','M','F','P','S',
 def convert_to_string(prediction,ORDER):
     string = ''
     for i in range(len(prediction)):
-        prediction[i][-2] = -np.inf
+        prediction[i,-2] = 0.
+        # ~ scaling_factor = np.sum(prediction[i])
+        # ~ probs = np.divide(prediction[i],scaling_factor)
+        # ~ index = np.random.choice(len(prediction[i]),1,p=probs)
         index = np.argmax(prediction[i])
-        residue = ORDER[index]
+        residue = ORDER[int(index)]
         string += residue
     return string
