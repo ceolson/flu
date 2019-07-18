@@ -13,7 +13,9 @@ def batchnorm(sequence,offset_name,scale_name,collection):
         offset = tf.get_variable(offset_name,trainable=True,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],initializer=tf.zeros(tf.shape(sequence)[1:]))
         scale = tf.get_variable(scale_name,trainable=True,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],initializer=tf.ones(tf.shape(sequence)[1:]))
     
+
     means,variances = tf.nn.moments(sequence,axes=[0])
+
     normalized = tf.nn.batch_normalization(sequence,means,variances,offset,scale,tf.constant(0.001))
     
     return normalized
