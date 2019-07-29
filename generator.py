@@ -9,6 +9,8 @@ import argparse
 import constants as cst
 import layers as lyr
 
+
+
 ### Limit GPU memory used by tf
 print('Limit GPU memory')
 config = tf.ConfigProto()
@@ -39,8 +41,12 @@ parser.add_argument('--restore_model', help='saved file to restore model from')
 parser.add_argument('--restore_predictor', help='saved file to restore predictor from')
 parser.add_argument('--save_model', help='where to save model to', default='/home/ceolson0/Documents/flu/saves/generic_model/')
 parser.add_argument('--save_predictor', help='where to save predictor to', default='/home/ceolson0/Documents/flu/saves/generic_predictor/')
+parser.add_argument('--num_outputs', help='how many samples to print out', default=1)
+parser.add_argument('--random_seed', type=int, help='random seed to make execution deterministic, default is random', default=np.random.randint(1,10))
 
 args = parser.parse_args()
+
+tf.set_random_seed(args.random_seed)
 
 def design_parser(string):
     design = {}
@@ -483,7 +489,7 @@ if args.tuner == 'head_stem':
 
 
     loss_backtoback_tuner = tf.reduce_mean(loss_head_tuner + loss_stem_tuner)
-    tune = tf.train.GradientDescentOptimizer(0.01).minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
+    tune = tf.train.AdamOptimizer().minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
     
 if args.tuner == 'subtype':
     input_sequence_predictor = tf.placeholder(shape=[None,max_size,encode_length],dtype=tf.dtypes.float32)
@@ -665,7 +671,8 @@ print('Tuning')
 
 results = []
 
-for i in range(100):
+for i in range(int(args.num_outputs)):
+    print('output number {}'.format(i))
     epochs = args.tune_epochs
 
     if args.tuner == 'head_stem':
@@ -693,7 +700,7 @@ for i in range(100):
     results.append(cst.convert_to_string(tuned,ORDER))
     sess.run(n_input.initializer)
 
-for i in range(100):
+for i in range(int(args.num_outputs)):
     print('>sample{}'.format(i))
     print(results[i])
 
