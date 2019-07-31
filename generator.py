@@ -27,13 +27,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--data', type=str, help='data to train on, one of "all", "h1", "h2", "h3", ..., "h18", or "aligned" (others are not aligned)', default='all')
 parser.add_argument('--encoding', type=str, help='data encoding, either "categorical" or "blosum"', default='categorical')
 parser.add_argument('--model', type=str, help='model to use, one of "gan", "vae_fc", or "vae_lstm"', default='vae_fc')
-parser.add_argument('--beta', type=float, help='if using a VAE, the value for beta', default=5)
-parser.add_argument('--tuner', type=str, help='what to tune for, one of "subtype", "head_stem", or "design"', default='design')
-parser.add_argument('--design', type=str, help='if using design tuner, list of residues and where you want them, e.g. "15-R,223-C"', default='1-M')
+parser.add_argument('--beta', type=float, help='if using a VAE, the coefficient for the KL loss', default=5)
+parser.add_argument('--tuner', type=str, help='what to tune for, a combination of "subtype", "head_stem", or "design" (comma separated)', default='design')
+parser.add_argument('--design', type=str, help='if using design tuner, list of strings "[position]-[residue]-[weight]" (weight is optional), e.g. "15-R-1.0,223-C-5.0"', default='1-M')
 parser.add_argument('--subtype', type=int, help='if using subtype tuner, which subtype you want', default=1)
-parser.add_argument('--head_stem', type=str, help='if using head-stem tuner, a string of "head_subtype, stem_subtype"', default='1,1')
+parser.add_argument('--head_stem', type=str, help='if using head-stem tuner, a string of "[head subtype],[stem subtype]"', default='1,1')
 parser.add_argument('--train_model_epochs', type=int, help='how many epochs to train the generative model', default=0)
-parser.add_argument('--train_predictor_epochs', type=int, help='how many epochs to train the predictor model (if it is learned)', default=0)
+parser.add_argument('--train_predictor_epochs', type=int, help='how many epochs to train the predictor model', default=0)
 parser.add_argument('--tune_epochs', type=int, help='how many epochs to tune', default=0)
 parser.add_argument('--batch_size', type=int, help='batch size for training everything', default=100)
 parser.add_argument('--latent_dimension', type=int, help='latent dimension for everything', default=100)
@@ -42,25 +42,37 @@ parser.add_argument('--restore_predictor', help='saved file to restore predictor
 parser.add_argument('--save_model', help='where to save model to', default='/home/ceolson0/Documents/flu/saves/generic_model/')
 parser.add_argument('--save_predictor', help='where to save predictor to', default='/home/ceolson0/Documents/flu/saves/generic_predictor/')
 parser.add_argument('--num_outputs', help='how many samples to print out', default=1)
-parser.add_argument('--random_seed', type=int, help='random seed to make execution deterministic, default is random', default=np.random.randint(1,10))
+parser.add_argument('--random_seed', type=int, help='random seed to make execution deterministic, default is random')
 
 args = parser.parse_args()
 
-tf.set_random_seed(args.random_seed)
+if args.random_seed:
+    tf.set_random_seed(args.random_seed)
 
 def design_parser(string):
     design = {}
+    weights = {}
     places = string.split(',')
     for place in places:
-        location,residue = place.split('-')
+        arr = place.split('-')
+        if len(arr) == 2:
+            location,residue = arr
+            weight = 1.
+        if len(arr) == 3:
+            location,residue,weight = arr
+            weight = float(weight)
         location = int(location)
         design[location] = residue
-    return design
+        weights[location] = weight
+    return design,weights
     
 def headstem_parser(string):
     head,stem = map(int,string.split(','))
     return head,stem
 
+tuner = args.tuner.split(',')
+
+# Array to convert from categorical to residue letter
 if args.encoding == 'categorical':
     ORDER = cst.ORDER_CATEGORICAL
     CATEGORIES = cst.CATEGORIES
@@ -102,7 +114,7 @@ elif args.encoding == 'blosum':
 
 f.close()
 
-if args.data != 'all':
+if args.data != 'all' and args.data != 'aligned':
     subtype = int(args.data[1:])
     
     temp = []
@@ -123,6 +135,7 @@ if args.data != 'all':
             temp.append(test_sequences[i])
     test_sequences = np.array(temp)
 
+# Add end of message and start of message characters if using RNN
 if args.model == 'vae_lstm':
     train_sequences_unprocessed = np.array(train_sequences)
     valid_sequences = np.array(valid_sequences)
@@ -139,6 +152,7 @@ if args.model == 'vae_lstm':
         seq_new = np.concatenate((seq_new,cst.EOM_VECTOR.reshape([1,24])),axis=0)
         train_sequences.append(seq)
     train_sequences = np.array(train_sequences)
+
 
 head_size = len(cst.HEAD)
 stem_size = len(cst.STEM)
@@ -158,6 +172,7 @@ num_batchnorm_encoder = 0
 num_batchnorm_decoder = 0
 
 
+### Define models
 
 if args.model == 'vae_fc':
     def encoder(sequence,training=True):
@@ -251,8 +266,10 @@ elif args.model == 'gan':
         
         output = lyr.dense('discriminator.dense1.matrix','discriminator.dense1.bias','discriminator',max_size*64,1,x)
         return output
+
+### Define predictors
         
-if args.tuner == 'head_stem':
+if 'head_stem' in tuner:
     def predictor_head(sequence):
         x = lyr.conv('predictor_head.conv1.filter','predictor_head.conv1.bias','predictor_head',(5,encode_length,64),sequence,head_size)
         x = tf.nn.leaky_relu(x)
@@ -283,7 +300,7 @@ if args.tuner == 'head_stem':
         output = lyr.dense('predictor_stem.dense1.matrix','predictor_stem.dense1.bias','predictor_stem',stem_size*64,num_classes,x)
         return output    
 
-elif args.tuner == 'subtype':
+elif 'subtype' in tuner:
     def predictor(sequence):
         x = lyr.conv('predictor.conv1.filter','predictor.conv1.bias','predictor',(5,encode_length,64),sequence,max_size)
         x = tf.nn.leaky_relu(x)
@@ -300,6 +317,7 @@ elif args.tuner == 'subtype':
         return output
 
 ### Set up graph
+
 def sample_from_latents(x):
     means = x[:,:latent_dim]
     log_vars = x[:,latent_dim:]
@@ -422,32 +440,33 @@ elif args.model == 'gan':
 
     train_generator = gen_optimizer.minimize(gen_loss,var_list=tf.get_collection('generator'),name='train_generator')
     grads_generator = gen_optimizer.compute_gradients(gen_loss,var_list=tf.get_collection('generator'))
+
+loss_backtoback_tuner = 0.
     
-if args.tuner == 'design':
+if 'design' in tuner:
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
         n_input = tf.get_variable('n_input',trainable=True,collections=['tuning_var',tf.GraphKeys.GLOBAL_VARIABLES],shape=[batch_size,latent_dim])
 
-    DESIGN = design_parser(args.design)
-    designed_indices = list(map(lambda x: x-1,list(DESIGN.keys())))
+    design,design_weights = design_parser(args.design)
     
     if args.model == 'gan':
         produced_tuner = generator(n_input)
     else:
         produced_tuner = decoder(n_input)
-
-    if args.encoding == 'blosum':
-        target_tuner = [tf.nn.softmax(CATEGORIES[DESIGN[key]]) for key in DESIGN.keys()]
-    else: 
-        target_tuner = [CATEGORIES[DESIGN[key]] for key in DESIGN.keys()]
-        
-    loss_backtoback_tuner = 0
-    for i in range(len(DESIGN.keys())):
-        temp = tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner[i],produced_tuner[0,designed_indices[i]])
-        loss_backtoback_tuner += temp
-
-    tune = tf.train.AdadeltaOptimizer().minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
     
-if args.tuner == 'head_stem':
+    target_tuner = {}
+    if args.encoding == 'blosum':
+        for key in design.keys():
+            target_tuner[key] = tf.nn.softmax(CATEGORIES[design[key]])
+    else:
+        for key in design.keys():
+            target_tuner[key] = CATEGORIES[design[key]]
+
+    for key in design.keys():
+        temp = tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner[key],produced_tuner[0,key-1])
+        loss_backtoback_tuner += design_weights[key] * temp
+    
+if 'head_stem' in tuner:
     input_sequence_head = tf.placeholder(shape=[None,head_size,encode_length],dtype=tf.dtypes.float32)
     input_sequence_stem = tf.placeholder(shape=[None,stem_size,encode_length],dtype=tf.dtypes.float32)
 
@@ -487,11 +506,9 @@ if args.tuner == 'head_stem':
     loss_head_tuner = tf.nn.softmax_cross_entropy_with_logits_v2(target_head_tuner,predicted_head_subtype_tuner[0])
     loss_stem_tuner = tf.nn.softmax_cross_entropy_with_logits_v2(target_stem_tuner,predicted_stem_subtype_tuner[0])
 
-
-    loss_backtoback_tuner = tf.reduce_mean(loss_head_tuner + loss_stem_tuner)
-    tune = tf.train.AdamOptimizer().minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
+    loss_backtoback_tuner += tf.reduce_mean(loss_head_tuner + loss_stem_tuner)
     
-if args.tuner == 'subtype':
+if 'subtype' in tuner:
     input_sequence_predictor = tf.placeholder(shape=[None,max_size,encode_length],dtype=tf.dtypes.float32)
     label_predictor = tf.placeholder(shape=[None,num_classes],dtype=tf.dtypes.float32)
     prediction_logits_predictor = predictor(input_sequence_predictor)
@@ -513,8 +530,9 @@ if args.tuner == 'subtype':
     predicted_subtype_tuner = predictor(produced_tuner)
     predicted_tuner = tf.nn.softmax(predicted_subtype_tuner)
     target_tuner = tf.constant(cst.TYPES[args.subtype])
-    loss_backtoback_tuner = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner,predicted_subtype_tuner[0]))
-    tune = tf.train.AdamOptimizer().minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
+    loss_backtoback_tuner += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner,predicted_subtype_tuner[0]))
+
+tune = tf.train.AdamOptimizer().minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
 
 ### Run
 
@@ -543,10 +561,12 @@ elif args.model == 'gan':
 if args.restore_model:
     saver_model.restore(sess,args.restore_model)
 
-if args.tuner == 'subtype':
-    saver_predictor = tf.train.Saver(tf.get_collection('predictor'))
-elif args.tuner == 'head_stem':
+if 'subtype' in tuner and 'head_stem' in tuner:
+    saver_predictor = tf.train.Saver(tf.get_collection('predictor') + tf.get_collection('predictor_head') + tf.get_collection('predictor_stem'))
+elif 'head_stem' in tuner:
     saver_predictor = tf.train.Saver(tf.get_collection('predictor_head') + tf.get_collection('predictor_stem'))
+elif 'subtype' in tuner:
+    saver_predictor = tf.train.Saver(tf.get_collection('predictor'))
     
 if args.restore_predictor:
     saver_predictor.restore(sess,args.restore_predictor)
@@ -630,7 +650,7 @@ print('Training predictor')
 
 epochs = args.train_predictor_epochs
 
-if args.tuner == 'head_stem':
+if 'head_stem' in tuner:
     for epoch in range(epochs):
         shuffle = np.random.permutation(range(len(train_sequences)))
         for i in range(num_batches):
@@ -645,7 +665,7 @@ if args.tuner == 'head_stem':
         print('loss:', lh,ls)
         saver_predictor.save(sess, args.save_predictor)
 
-elif args.tuner == 'subtype':
+elif 'subtype' in tuner:
     for epoch in range(epochs):
         shuffle = np.random.permutation(range(len(train_sequences)))
         for i in range(num_batches):
@@ -675,27 +695,32 @@ for i in range(int(args.num_outputs)):
     print('output number {}'.format(i))
     epochs = args.tune_epochs
 
-    if args.tuner == 'head_stem':
-        for i in range(epochs):
-            _,l,p1,p2 = sess.run([tune,loss_backtoback_tuner,predicted_head_tuner,predicted_stem_tuner])
-            if i%int(epochs/10)==0:
-                print('Epoch',i,'loss',l)
-                print(p1[0])
-                print(p2[0])
+    # ~ if args.tuner == 'head_stem':
+        # ~ for i in range(epochs):
+            # ~ _,l,p1,p2 = sess.run([tune,loss_backtoback_tuner,predicted_head_tuner,predicted_stem_tuner])
+            # ~ if i%int(epochs/10)==0:
+                # ~ print('Epoch',i,'loss',l)
+                # ~ print(p1[0])
+                # ~ print(p2[0])
                 
-    elif args.tuner == 'design':
-        for i in range(epochs):
-            _,l = sess.run([tune,loss_backtoback_tuner])
-            if i%int(epochs/10)==0:
-                print('Epoch',i,'loss',l)
+    # ~ elif args.tuner == 'design':
+        # ~ for i in range(epochs):
+            # ~ _,l = sess.run([tune,loss_backtoback_tuner])
+            # ~ if i%int(epochs/10)==0:
+                # ~ print('Epoch',i,'loss',l)
 
-    elif args.tuner == 'subtype':
-        for i in range(epochs):
-            _,l,p = sess.run([tune,loss_backtoback_tuner,predicted_tuner])
-            if i%int(epochs/10)==0:
-                print('Epoch',i,'loss',l)
-                print(p[0])
-    
+    # ~ elif args.tuner == 'subtype':
+        # ~ for i in range(epochs):
+            # ~ _,l,p = sess.run([tune,loss_backtoback_tuner,predicted_tuner])
+            # ~ if i%int(epochs/10)==0:
+                # ~ print('Epoch',i,'loss',l)
+                # ~ print(p[0])
+                
+    for i in range(epochs):
+        _,l = sess.run([tune,loss_backtoback_tuner])
+        if i%int(epochs/10)==0:
+            print('Epoch',i,'loss',l)
+
     tuned = sess.run(tf.nn.softmax(produced_tuner)[0])
     results.append(cst.convert_to_string(tuned,ORDER))
     sess.run(n_input.initializer)

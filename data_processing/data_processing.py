@@ -33,6 +33,7 @@ BLOSUM = {
 'H': [-2,  0,  1, -1, -3,  0,  0, -2,  8, -3, -3, -1, -2, -1, -2, -1, -2, -2,  2, -3,  0,  0, -1, -4], 
 'I': [-1, -3, -3, -3, -1, -3, -3, -4, -3,  4,  2, -3,  1,  0, -3, -2, -1, -3, -1,  3, -3, -3, -1, -4], 
 'L': [-1, -2, -3, -4, -1, -2, -3, -4, -3,  2,  4, -2,  2,  0, -3, -2, -1, -2, -1,  1, -4, -3, -1, -4],
+'J': [-1, -2, -3, -4, -1, -2, -3, -4, -3,  2,  4, -2,  2,  0, -3, -2, -1, -2, -1,  1, -4, -3, -1, -4],
 'K': [-1,  2,  0, -1, -3,  1,  1, -2, -1, -3, -2,  5, -1, -3, -1,  0, -1, -3, -2, -2,  0,  1, -1, -4],
 'M': [-1, -1, -2, -3, -1,  0, -2, -3, -2,  1,  2, -1,  5,  0, -2, -1, -1, -1, -1,  1, -3, -1, -1, -4],
 'F': [-2, -3, -3, -3, -2, -3, -3, -3, -1,  0,  0, -3,  0,  6, -4, -2, -2,  1,  3, -1, -3, -3, -1, -4],
@@ -145,19 +146,17 @@ for i in range(len(arr_new)):
     arr_new[i].seq = np.pad(arr_new[i].seq, (0,max_size-len(arr_new[i].seq)), 'constant', constant_values='[')
     
     
-all_seqs = []
-for elt in arr_new:
-    string = ''
-    for letter in elt.seq:
-        string += letter
-    all_seqs.append(string)
-all_seqs = np.array(all_seqs)
-print(np.random.permutation(all_seqs)[:1000])
+# ~ all_seqs = []
+# ~ for elt in arr_new:
+    # ~ string = ''
+    # ~ for letter in elt.seq:
+        # ~ string += letter
+    # ~ all_seqs.append(string)
+# ~ all_seqs = np.array(all_seqs)
+# ~ print(np.random.permutation(all_seqs)[:1000])
 
 # In[68]:
 
-
-sequences_int = [[ord(letter)-ord('A') for letter in elt.seq] for elt in arr_new]
 sequences_cat = []
 for elt in arr_new:
 	sequence_cat = []
@@ -167,13 +166,13 @@ for elt in arr_new:
 		except:
 			sequence_cat.append(CATEGORIES['X'])
 	sequences_cat.append(sequence_cat)
-
+sequences_cat = np.array(sequences_cat)
 
 # In[69]:
 
 
 sequences_blosum = [[BLOSUM[residue] for residue in elt.seq] for elt in arr_new]
-
+sequences_blosum = np.array(sequences_blosum)
 
 # In[70]:
 
@@ -186,11 +185,15 @@ for elt in arr_new:
     except:
         number = int(elt.id[1])
     labels.append(number)
-
+labels = np.array(labels)
 
 # In[79]:
 
 
+permutation = np.random.permutation(range(len(labels)))
+labels = labels[permutation]
+sequences_blosum = sequences_blosum[permutation]
+sequences_cat = sequences_cat[permutation]
 
 
 train_labels = keras.utils.to_categorical(labels[:40000],19)
