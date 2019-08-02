@@ -26,7 +26,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('--data', type=str, help='data to train on, one of "all", "h1", "h2", "h3", ..., "h18", or "aligned" (others are not aligned)', default='all')
 parser.add_argument('--encoding', type=str, help='data encoding, either "categorical" or "blosum"', default='categorical')
-parser.add_argument('--model', type=str, help='model to use, one of "gan", "vae_fc", or "vae_lstm"', default='vae_fc')
+parser.add_argument('--model', type=str, help='model to use, one of "gan", "vae_fc", "vae_conv", or "vae_lstm"', default='vae_fc')
 parser.add_argument('--beta', type=float, help='if using a VAE, the coefficient for the KL loss', default=5)
 parser.add_argument('--tuner', type=str, help='what to tune for, a combination of "subtype", "head_stem", or "design" (comma separated)', default='design')
 parser.add_argument('--design', type=str, help='if using design tuner, list of strings "[position]-[residue]-[weight]" (weight is optional), e.g. "15-R-1.0,223-C-5.0"', default='1-M')
@@ -43,6 +43,7 @@ parser.add_argument('--save_model', help='where to save model to', default='/hom
 parser.add_argument('--save_predictor', help='where to save predictor to', default='/home/ceolson0/Documents/flu/saves/generic_predictor/')
 parser.add_argument('--num_outputs', help='how many samples to print out', default=1)
 parser.add_argument('--random_seed', type=int, help='random seed to make execution deterministic, default is random')
+parser.add_argument('--return_latents', type=int, help='1 if you want to print the latent variable with the sequence')
 
 args = parser.parse_args()
 
@@ -214,6 +215,36 @@ if args.model == 'vae_fc':
         x = lyr.batchnorm(x,'decoder.batchnorm4.offset','decoder.batchnorm4.scale','decoder')
         
         return x
+        
+elif args.model == 'vae_conv':
+    def encoder(sequence,training=True):
+        x = lyr.conv('encoder.conv1.filter','encoder.conv1.bias','encoder',(5,encode_length,16),sequence,max_size)
+        x = tf.nn.leaky_relu(x)
+        
+        x = lyr.residual_block('encoder.res1.filter1','encoder.res1.bias1','encoder.res1.filter2','encoder.res1.bias1','encoder',16,16,x,max_size,channels=16)
+        
+        x = tf.reshape(x,(batch_size,max_size*16)) 
+        
+        x = lyr.dense('encoder.dense1.matrix','encoder.dense1.bias','encoder',max_size*16,2*latent_dim,x)
+        output = tf.nn.leaky_relu(x)
+        
+        return output
+        
+    def decoder(sequence,training=True):
+        x = lyr.dense('decoder.dense1.matrix','decoder.dense1.bias','decoder',latent_dim,max_size,sequence)
+        x = tf.nn.leaky_relu(x)
+        
+        x = tf.reshape(x,(batch_size,max_size,1))
+        
+        x = lyr.conv('decoder.conv1.filter','decoder.conv1.bias','decoder',(5,1,16),x,max_size)
+        x = tf.nn.leaky_relu(x)
+        
+        x = lyr.residual_block('decoder.res1.filter1','decoder.res1.bias1','decoder.res1.filter2','decoder.res1.bias1','decoder',16,16,x,max_size,channels=16)
+    
+        x = lyr.conv('decoder.conv2.filter','decoder.conv2.bias','decoder',(5,16,encode_length),x,max_size)
+        output = tf.nn.leaky_relu(x)
+
+        return output
 
 elif args.model == 'vae_lstm':
     encoder_lstm = tf.keras.layers.CuDNNLSTM(latent_dim*2,return_state=True)
@@ -324,7 +355,7 @@ def sample_from_latents(x):
     base = tf.keras.backend.random_normal(shape=[latent_dim,])
     return means + tf.exp(log_vars) * base
 
-if args.model == 'vae_fc':
+if args.model in ['vae_fc','vae_conv']:
     sequence_in = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
     correct_labels = tf.placeholder(shape=[batch_size,None,encode_length],dtype=tf.dtypes.float32)
 
@@ -551,7 +582,7 @@ def rec(sequence):
     
 sess.run(tf.global_variables_initializer())
 
-if args.model == 'vae_fc':
+if args.model in ['vae_fc','vae_conv']:
     saver_model = tf.train.Saver(tf.get_collection('encoder') + tf.get_collection('decoder'))
 elif args.model == 'vae_lstm':
     saver_model = tf.train.Saver(encoder_lstm.weights + decoder_lstm.weights)
@@ -577,7 +608,11 @@ print('Training model')
 epochs = args.train_model_epochs
 num_batches = int(np.floor(len(train_sequences)/batch_size))
 
-if args.model == 'vae_fc':
+if args.model in ['vae_fc','vae_conv']:
+    print('initial')
+    prediction = sess.run(tf.nn.softmax(decoder(tf.random_normal([batch_size,latent_dim]),training=False)))[0]
+    print(cst.convert_to_string(prediction,ORDER))
+    
     for epoch in range(epochs):
         shuffled_sequences = np.random.permutation(train_sequences)
         for batch in range(num_batches):
@@ -690,6 +725,7 @@ print('\n')
 print('Tuning')
 
 results = []
+latents = []
 
 for i in range(int(args.num_outputs)):
     print('output number {}'.format(i))
@@ -720,13 +756,20 @@ for i in range(int(args.num_outputs)):
         _,l = sess.run([tune,loss_backtoback_tuner])
         if i%int(epochs/10)==0:
             print('Epoch',i,'loss',l)
+            if 'subtype' in tuner:
+                p = sess.run(predicted_tuner)
+                print(p[0])
 
     tuned = sess.run(tf.nn.softmax(produced_tuner)[0])
+    lat = sess.run(n_input[0])
     results.append(cst.convert_to_string(tuned,ORDER))
+    latents.append(lat)
     sess.run(n_input.initializer)
 
 for i in range(int(args.num_outputs)):
     print('>sample{}'.format(i))
     print(results[i])
+    if args.return_latents:
+        print(latents[i])
 
 sess.close()
