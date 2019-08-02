@@ -35,11 +35,11 @@ def conv(filter_name,bias_name,model,filter_shape,in_tensor,size):
     out = tf.add(out,bias)
     return out
     
-def residual_block(filter_name1,bias_name1,filter_name2,bias_name2,model,in_dim,out_dim,in_tensor,size):
+def residual_block(filter_name1,bias_name1,filter_name2,bias_name2,model,in_dim,out_dim,in_tensor,size,channels=64):
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
-        filter1 = tf.get_variable(filter_name1,collections=[model,tf.GraphKeys.GLOBAL_VARIABLES],trainable=True,shape=[5,in_dim,64])
-        bias1 = tf.get_variable(bias_name1,collections=[model,tf.GraphKeys.GLOBAL_VARIABLES],trainable=True,shape=[size,64])
-        filter2 = tf.get_variable(filter_name2,collections=[model,tf.GraphKeys.GLOBAL_VARIABLES],trainable=True,shape=[5,64,out_dim])
+        filter1 = tf.get_variable(filter_name1,collections=[model,tf.GraphKeys.GLOBAL_VARIABLES],trainable=True,shape=[5,in_dim,channels])
+        bias1 = tf.get_variable(bias_name1,collections=[model,tf.GraphKeys.GLOBAL_VARIABLES],trainable=True,shape=[size,channels])
+        filter2 = tf.get_variable(filter_name2,collections=[model,tf.GraphKeys.GLOBAL_VARIABLES],trainable=True,shape=[5,channels,out_dim])
         bias2 = tf.get_variable(bias_name2,collections=[model,tf.GraphKeys.GLOBAL_VARIABLES],trainable=True,shape=[size,out_dim])
 
         x = in_tensor
