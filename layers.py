@@ -26,12 +26,12 @@ def layernorm(sequence,batch_size):
     variances = tf.reshape(variances,[batch_size,1,1])
     return tf.divide(tf.subtract(sequence,means),variances)
     
-def conv(filter_name,bias_name,model,filter_shape,in_tensor,size):
+def conv(filter_name,bias_name,model,filter_shape,in_tensor,size,padding='SAME',stride=1):
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
         filt = tf.get_variable(filter_name,collections=[model,tf.GraphKeys.GLOBAL_VARIABLES],trainable=True,shape=filter_shape)
         bias = tf.get_variable(bias_name,collections=[model,tf.GraphKeys.GLOBAL_VARIABLES],trainable=True,shape=[size,filter_shape[-1]])
         
-    out = tf.nn.conv1d(in_tensor,filters=filt,padding='SAME',stride=1)
+    out = tf.nn.conv1d(in_tensor,filters=filt,padding=padding,stride=stride)
     out = tf.add(out,bias)
     return out
     

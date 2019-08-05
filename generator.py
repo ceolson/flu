@@ -39,11 +39,12 @@ parser.add_argument('--batch_size', type=int, help='batch size for training ever
 parser.add_argument('--latent_dimension', type=int, help='latent dimension for everything', default=100)
 parser.add_argument('--restore_model', help='saved file to restore model from')
 parser.add_argument('--restore_predictor', help='saved file to restore predictor from')
-parser.add_argument('--save_model', help='where to save model to', default='/home/ceolson0/Documents/flu/saves/generic_model/')
-parser.add_argument('--save_predictor', help='where to save predictor to', default='/home/ceolson0/Documents/flu/saves/generic_predictor/')
+parser.add_argument('--save_model', help='where to save model to', default='/home/ceolson0/Documents/flu/saves/models/default_model/')
+parser.add_argument('--save_predictor', help='where to save predictor to', default='/home/ceolson0/Documents/flu/saves/predictors/default_predictor/')
 parser.add_argument('--num_outputs', help='how many samples to print out', default=1)
 parser.add_argument('--random_seed', type=int, help='random seed to make execution deterministic, default is random')
 parser.add_argument('--return_latents', type=int, help='1 if you want to print the latent variable with the sequence')
+parser.add_argument('--channels', type=int, help='number of channels in convolution hidden layers', default=16)
 
 args = parser.parse_args()
 
@@ -218,14 +219,14 @@ if args.model == 'vae_fc':
         
 elif args.model == 'vae_conv':
     def encoder(sequence,training=True):
-        x = lyr.conv('encoder.conv1.filter','encoder.conv1.bias','encoder',(5,encode_length,16),sequence,max_size)
+        x = lyr.conv('encoder.conv1.filter','encoder.conv1.bias','encoder',(5,encode_length,args.channels),sequence,max_size)
         x = tf.nn.leaky_relu(x)
         
-        x = lyr.residual_block('encoder.res1.filter1','encoder.res1.bias1','encoder.res1.filter2','encoder.res1.bias1','encoder',16,16,x,max_size,channels=16)
+        x = lyr.residual_block('encoder.res1.filter1','encoder.res1.bias1','encoder.res1.filter2','encoder.res1.bias1','encoder',args.channels,args.channels,x,max_size,channels=args.channels)
         
-        x = tf.reshape(x,(batch_size,max_size*16)) 
+        x = tf.reshape(x,(batch_size,max_size*args.channels)) 
         
-        x = lyr.dense('encoder.dense1.matrix','encoder.dense1.bias','encoder',max_size*16,2*latent_dim,x)
+        x = lyr.dense('encoder.dense1.matrix','encoder.dense1.bias','encoder',max_size*args.channels,2*latent_dim,x)
         output = tf.nn.leaky_relu(x)
         
         return output
@@ -236,12 +237,12 @@ elif args.model == 'vae_conv':
         
         x = tf.reshape(x,(batch_size,max_size,1))
         
-        x = lyr.conv('decoder.conv1.filter','decoder.conv1.bias','decoder',(5,1,16),x,max_size)
+        x = lyr.conv('decoder.conv1.filter','decoder.conv1.bias','decoder',(5,1,args.channels),x,max_size)
         x = tf.nn.leaky_relu(x)
         
-        x = lyr.residual_block('decoder.res1.filter1','decoder.res1.bias1','decoder.res1.filter2','decoder.res1.bias1','decoder',16,16,x,max_size,channels=16)
+        x = lyr.residual_block('decoder.res1.filter1','decoder.res1.bias1','decoder.res1.filter2','decoder.res1.bias1','decoder',args.channels,args.channels,x,max_size,channels=args.channels)
     
-        x = lyr.conv('decoder.conv2.filter','decoder.conv2.bias','decoder',(5,16,encode_length),x,max_size)
+        x = lyr.conv('decoder.conv2.filter','decoder.conv2.bias','decoder',(5,args.channels,encode_length),x,max_size)
         output = tf.nn.leaky_relu(x)
 
         return output
@@ -302,49 +303,37 @@ elif args.model == 'gan':
         
 if 'head_stem' in tuner:
     def predictor_head(sequence):
-        x = lyr.conv('predictor_head.conv1.filter','predictor_head.conv1.bias','predictor_head',(5,encode_length,64),sequence,head_size)
+        x = lyr.conv('predictor_head.conv1.filter','predictor_head.conv1.bias','predictor_head',(5,encode_length,16),sequence,head_size)
         x = tf.nn.leaky_relu(x)
         
-        x = lyr.residual_block('predictor_head.res1.filter1','predictor_head.res1.bias1','predictor_head.res1.filter2','predictor_head.res1.bias1','predictor_head',64,64,x,head_size)
-        x = lyr.residual_block('predictor_head.res2.filter1','predictor_head.res2.bias1','predictor_head.res2.filter2','predictor_head.res2.bias1','predictor_head',64,64,x,head_size)
-        x = lyr.residual_block('predictor_head.res3.filter1','predictor_head.res3.bias1','predictor_head.res3.filter2','predictor_head.res3.bias1','predictor_head',64,64,x,head_size)
-        x = lyr.residual_block('predictor_head.res4.filter1','predictor_head.res4.bias1','predictor_head.res4.filter2','predictor_head.res4.bias1','predictor_head',64,64,x,head_size)
-        x = lyr.residual_block('predictor_head.res5.filter1','predictor_head.res5.bias1','predictor_head.res5.filter2','predictor_head.res5.bias1','predictor_head',64,64,x,head_size)
+        x = lyr.residual_block('predictor_head.res1.filter1','predictor_head.res1.bias1','predictor_head.res1.filter2','predictor_head.res1.bias1','predictor_head',16,16,x,head_size,channels=16)
         
-        x = tf.reshape(x,(batch_size,head_size*64))
+        x = tf.reshape(x,(batch_size,head_size*16))
         
-        output = lyr.dense('predictor_head.dense1.matrix','predictor_head.dense1.bias','predictor_head',head_size*64,num_classes,x)
+        output = lyr.dense('predictor_head.dense1.matrix','predictor_head.dense1.bias','predictor_head',head_size*16,num_classes,x)
         return output
         
     def predictor_stem(sequence):
-        x = lyr.conv('predictor_stem.conv1.filter','predictor_stem.conv1.bias','predictor_stem',(5,encode_length,64),sequence,stem_size)
+        x = lyr.conv('predictor_stem.conv1.filter','predictor_stem.conv1.bias','predictor_stem',(5,encode_length,16),sequence,stem_size)
         x = tf.nn.leaky_relu(x)
         
-        x = lyr.residual_block('predictor_stem.res1.filter1','predictor_stem.res1.bias1','predictor_stem.res1.filter2','predictor_stem.res1.bias1','predictor_stem',64,64,x,stem_size)
-        x = lyr.residual_block('predictor_stem.res2.filter1','predictor_stem.res2.bias1','predictor_stem.res2.filter2','predictor_stem.res2.bias1','predictor_stem',64,64,x,stem_size)
-        x = lyr.residual_block('predictor_stem.res3.filter1','predictor_stem.res3.bias1','predictor_stem.res3.filter2','predictor_stem.res3.bias1','predictor_stem',64,64,x,stem_size)
-        x = lyr.residual_block('predictor_stem.res4.filter1','predictor_stem.res4.bias1','predictor_stem.res4.filter2','predictor_stem.res4.bias1','predictor_stem',64,64,x,stem_size)
-        x = lyr.residual_block('predictor_stem.res5.filter1','predictor_stem.res5.bias1','predictor_stem.res5.filter2','predictor_stem.res5.bias1','predictor_stem',64,64,x,stem_size)
+        x = lyr.residual_block('predictor_stem.res1.filter1','predictor_stem.res1.bias1','predictor_stem.res1.filter2','predictor_stem.res1.bias1','predictor_stem',16,16,x,stem_size,channels=16)
         
-        x = tf.reshape(x,(batch_size,stem_size*64))
+        x = tf.reshape(x,(batch_size,stem_size*16))
         
-        output = lyr.dense('predictor_stem.dense1.matrix','predictor_stem.dense1.bias','predictor_stem',stem_size*64,num_classes,x)
+        output = lyr.dense('predictor_stem.dense1.matrix','predictor_stem.dense1.bias','predictor_stem',stem_size*16,num_classes,x)
         return output    
 
 elif 'subtype' in tuner:
     def predictor(sequence):
-        x = lyr.conv('predictor.conv1.filter','predictor.conv1.bias','predictor',(5,encode_length,64),sequence,max_size)
+        x = lyr.conv('predictor.conv1.filter','predictor.conv1.bias','predictor',(5,encode_length,16),sequence,max_size)
         x = tf.nn.leaky_relu(x)
         
-        x = lyr.residual_block('predictor.res1.filter1','predictor.res1.bias1','predictor.res1.filter2','predictor.res1.bias1','predictor',64,64,x,max_size)
-        x = lyr.residual_block('predictor.res2.filter1','predictor.res2.bias1','predictor.res2.filter2','predictor.res2.bias1','predictor',64,64,x,max_size)
-        x = lyr.residual_block('predictor.res3.filter1','predictor.res3.bias1','predictor.res3.filter2','predictor.res3.bias1','predictor',64,64,x,max_size)
-        x = lyr.residual_block('predictor.res4.filter1','predictor.res4.bias1','predictor.res4.filter2','predictor.res4.bias1','predictor',64,64,x,max_size)
-        x = lyr.residual_block('predictor.res5.filter1','predictor.res5.bias1','predictor.res5.filter2','predictor.res5.bias1','predictor',64,64,x,max_size)
+        x = lyr.residual_block('predictor.res1.filter1','predictor.res1.bias1','predictor.res1.filter2','predictor.res1.bias1','predictor',16,16,x,max_size,channels=16)
         
-        x = tf.reshape(x,(batch_size,max_size*64))
+        x = tf.reshape(x,(batch_size,max_size*16))
         
-        output = lyr.dense('predictor.dense1.matrix','predictor.dense1.bias','predictor',max_size*64,num_classes,x)
+        output = lyr.dense('predictor.dense1.matrix','predictor.dense1.bias','predictor',max_size*16,num_classes,x)
         return output
 
 ### Set up graph
@@ -726,6 +715,7 @@ print('Tuning')
 
 results = []
 latents = []
+subtypes = []
 
 for i in range(int(args.num_outputs)):
     print('output number {}'.format(i))
@@ -760,10 +750,16 @@ for i in range(int(args.num_outputs)):
                 p = sess.run(predicted_tuner)
                 print(p[0])
 
-    tuned = sess.run(tf.nn.softmax(produced_tuner)[0])
+    tuned = sess.run(tf.nn.softmax(produced_tuner))
     lat = sess.run(n_input[0])
-    results.append(cst.convert_to_string(tuned,ORDER))
+    results.append(cst.convert_to_string(tuned[0],ORDER))
     latents.append(lat)
+    try:
+        subtype = sess.run(prediction_predictor,feed_dict={input_sequence_predictor:tuned})[0]
+        subtypes.append(np.argmax(subtype))
+    except:
+        print('no subtype predictor available')
+    
     sess.run(n_input.initializer)
 
 for i in range(int(args.num_outputs)):
@@ -771,5 +767,6 @@ for i in range(int(args.num_outputs)):
     print(results[i])
     if args.return_latents:
         print(latents[i])
+print(subtypes)
 
 sess.close()
