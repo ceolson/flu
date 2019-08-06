@@ -39,7 +39,7 @@ Following [this paper](https://openreview.net/forum?id=Sy2fzU9gl) which tries to
 When a model is trained for the first time, I use a simulated annealing protocol to ramp up the KL loss from 0 to beta. I generally trained models for 300 ish epochs, going back for more if it looked like they needed it. I think the big complicated fully connected VAE I used for a while probably got a total of about 2000 epochs of training.
 
 ### Batch normalization
-I used batch normalization for the fully connected VAE, but not the convolutional one. There is no particular reason why. 
+I used batch normalization to speed up training (and prevent weird runaway training where the loss would go to NaN and the sequences would just be all A's).
 
 # The predictor
 ## Subtype predictor
@@ -52,7 +52,7 @@ So I could tune the head and stem subtype separately, I also trained a subtype p
 So I could tune certain positions having certain residues, I also implemented a way to take the crossentropy between a specific residue and a target residue.
 
 # The training data
-I searched for all complete HA sequences on <fludb.org> and got about 87,000 sequences. I used 40,000 for training. I tried to align them using MUSCLE and got crazy gaps everywhere because there were so many (even though I did them in batches of 2,500). I decided that my model was probably learning to compensate for misalignment anyways so I didn't align the sequences for most of the project.
+I searched for all complete HA sequences on fludb.org and got about 87,000 sequences. I used 40,000 for training. I tried to align them using MUSCLE and got crazy gaps everywhere because there were so many (even though I did them in batches of 2,500). I decided that my model was probably learning to compensate for misalignment anyways so I didn't align the sequences for most of the project.
 
 I encoded each amino acid as a one-hot vector with length 22 (20 amino acids, 1 unknown, 1 gap). I am also trying to encode each amino acid with its row in a replacement matrix like BLOSUM62. These rows can be interpreted as the log probability distribution of a residue over all amino acids. This would give the model some knowledge about which aa's are similar and which are really important to keep exactly the same. Using this encoding tends to result in models that train but are very hard to tune. I don't know why this is and am still working on it.
 

@@ -233,13 +233,16 @@ elif args.model == 'vae_conv':
         
         x = lyr.conv('encoder.conv1.filter','encoder.conv1.bias','encoder',(5,encode_length,args.channels),sequence,max_size)
         x = tf.nn.leaky_relu(x)
+        x = lyr.batchnorm(x,'encoder.batchnorm1.offset','encoder.batchnorm1.scale','encoder.batchnorm1.total_means','encoder.batchnorm1.total_variances','encoder.num_means','encoder',(max_size,args.channels),training=training)
         
         x = lyr.residual_block('encoder.res1.filter1','encoder.res1.bias1','encoder.res1.filter2','encoder.res1.bias1','encoder',args.channels,args.channels,x,max_size,channels=args.channels)
+        x = lyr.batchnorm(x,'encoder.batchnorm2.offset','encoder.batchnorm2.scale','encoder.batchnorm2.total_means','encoder.batchnorm2.total_variances','encoder.num_means','encoder',(max_size,args.channels),training=training)
         
-        x = tf.reshape(x,(num,max_size*args.channels)) 
+        x = tf.reshape(x,(num,max_size*args.channels))
         
         x = lyr.dense('encoder.dense1.matrix','encoder.dense1.bias','encoder',max_size*args.channels,2*latent_dim,x)
-        output = tf.nn.leaky_relu(x)
+        x = tf.nn.leaky_relu(x)
+        output = lyr.batchnorm(x,'encoder.batchnorm3.offset','encoder.batchnorm3.scale','encoder.batchnorm3.total_means','encoder.batchnorm3.total_variances','encoder.num_means','encoder',(2*latent_dim),training=training)
         
         return output
         
@@ -248,16 +251,20 @@ elif args.model == 'vae_conv':
         
         x = lyr.dense('decoder.dense1.matrix','decoder.dense1.bias','decoder',latent_dim,max_size,sequence)
         x = tf.nn.leaky_relu(x)
+        x = lyr.batchnorm(x,'decoder.batchnorm1.offset','decoder.batchnorm1.scale','decoder.batchnorm1.total_means','decoder.batchnorm1.total_variances','decoder.num_means','decoder',(max_size,),training=training)
         
         x = tf.reshape(x,(num,max_size,1))
         
         x = lyr.conv('decoder.conv1.filter','decoder.conv1.bias','decoder',(5,1,args.channels),x,max_size)
         x = tf.nn.leaky_relu(x)
+        x = lyr.batchnorm(x,'decoder.batchnorm2.offset','decoder.batchnorm2.scale','decoder.batchnorm2.total_means','decoder.batchnorm2.total_variances','decoder.num_means','decoder',(max_size,args.channels),training=training)
         
         x = lyr.residual_block('decoder.res1.filter1','decoder.res1.bias1','decoder.res1.filter2','decoder.res1.bias1','decoder',args.channels,args.channels,x,max_size,channels=args.channels)
+        x = lyr.batchnorm(x,'decoder.batchnorm3.offset','decoder.batchnorm3.scale','decoder.batchnorm3.total_means','decoder.batchnorm3.total_variances','decoder.num_means','decoder',(max_size,args.channels),training=training)
     
         x = lyr.conv('decoder.conv2.filter','decoder.conv2.bias','decoder',(5,args.channels,encode_length),x,max_size)
-        output = tf.nn.leaky_relu(x)
+        x = tf.nn.leaky_relu(x)
+        output = lyr.batchnorm(x,'decoder.batchnorm4.offset','decoder.batchnorm4.scale','decoder.batchnorm4.total_means','decoder.batchnorm4.total_variances','decoder.num_means','decoder',(max_size,encode_length),training=training)
 
         return output
 
