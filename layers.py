@@ -8,13 +8,28 @@ def dense(matrix,bias,collection,in_dim,out_dim,in_tensor):
     
     return tf.matmul(in_tensor,W) + b    
     
-def batchnorm(sequence,offset_name,scale_name,collection):
+def batchnorm(sequence,offset_name,scale_name,total_means_name,total_variances_name,num_name,collection,shape,training):
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
-        offset = tf.get_variable(offset_name,trainable=True,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],initializer=tf.zeros(tf.shape(sequence)[1:]))
-        scale = tf.get_variable(scale_name,trainable=True,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],initializer=tf.ones(tf.shape(sequence)[1:]))
+        offset = tf.get_variable(offset_name,trainable=True,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],initializer=tf.zeros(shape))
+        scale = tf.get_variable(scale_name,trainable=True,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],initializer=tf.ones(shape))
+        
+        total_means = tf.get_variable(total_means_name,trainable=False,initializer=tf.zeros(shape))
+        total_variances = tf.get_variable(total_variances_name,trainable=False,initializer=tf.zeros(shape))
+        num = tf.get_variable(num_name,trainable=False,initializer=0.)
     
-
-    means,variances = tf.nn.moments(sequence,axes=[0])
+    def if_training():
+        means,variances = tf.nn.moments(sequence,axes=[0])
+        total_means.assign_add(means)
+        total_variances.assign_add(variances)
+        num.assign_add(1.)
+        return means,variances
+        
+    def if_not_training():
+        means = tf.div_no_nan(total_means,num,name='avg_means')
+        variances = tf.div_no_nan(total_variances,num,name='avg_vars')
+        return means,variances
+    
+    means,variances = tf.cond(training,if_training,if_not_training)
 
     normalized = tf.nn.batch_normalization(sequence,means,variances,offset,scale,tf.constant(0.001))
     
