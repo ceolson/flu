@@ -1,39 +1,44 @@
 import tensorflow as tf
+import sys
     
 def dense(matrix,bias,collection,in_dim,out_dim,in_tensor):
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
         W = tf.get_variable(matrix,trainable=True,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],shape=[in_dim,out_dim])
         b = tf.get_variable(bias,trainable=True,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],shape=[out_dim,])
 
-    
     return tf.matmul(in_tensor,W) + b    
     
-def batchnorm(sequence,offset_name,scale_name,total_means_name,total_variances_name,num_name,collection,shape,training):
+def batchnorm(sequence,offset_name,scale_name,average_means_name,average_variances_name,num_name,collection,shape,training):
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
         offset = tf.get_variable(offset_name,trainable=True,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],initializer=tf.zeros(shape))
         scale = tf.get_variable(scale_name,trainable=True,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],initializer=tf.ones(shape))
         
-        total_means = tf.get_variable(total_means_name,trainable=False,initializer=tf.zeros(shape))
-        total_variances = tf.get_variable(total_variances_name,trainable=False,initializer=tf.zeros(shape))
-        num = tf.get_variable(num_name,trainable=False,initializer=0.)
+        average_means = tf.get_variable(average_means_name,trainable=False,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],initializer=tf.zeros(shape))
+        average_variances = tf.get_variable(average_variances_name,trainable=False,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],initializer=tf.zeros(shape))
+        num = tf.get_variable(num_name,trainable=False,collections=[collection,tf.GraphKeys.GLOBAL_VARIABLES],initializer=0.)
     
     def if_training():
         means,variances = tf.nn.moments(sequence,axes=[0])
-        total_means.assign_add(means)
-        total_variances.assign_add(variances)
-        num.assign_add(1.)
-        return means,variances
+        
+        new_average_mean = (average_means * num + means) / (num + 1.)
+        temp1 = average_means.assign(new_average_mean)
+        
+        new_average_variance = (average_variances * num + variances) / (num + 1.)
+        temp2 = average_variances.assign(new_average_variance)
+        
+        temp3 = num.assign_add(1.)
+        return means,variances,temp1,temp2,temp3
         
     def if_not_training():
-        means = tf.div_no_nan(total_means,num,name='avg_means')
-        variances = tf.div_no_nan(total_variances,num,name='avg_vars')
-        return means,variances
+        means = average_means
+        variances = average_variances
+        return means,variances,0.,0.,0.
     
-    means,variances = tf.cond(training,if_training,if_not_training)
+    
+    means,variances,temp1,temp2,temp3 = tf.cond(training,if_training,if_not_training)
 
-    normalized = tf.nn.batch_normalization(sequence,means,variances,offset,scale,tf.constant(0.001))
-    
-    return normalized
+    with tf.control_dependencies([temp1,temp2,temp3]):
+        return tf.nn.batch_normalization(sequence,means,variances,offset,scale,tf.constant(0.001))
     
 def layernorm(sequence,batch_size):
     means,variances = tf.nn.moments(sequence,axes=[1,2])

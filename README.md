@@ -63,6 +63,7 @@ python generator.py \
 python generator.py \
     --model=vae_conv \
     --restore_model=path/to/save/folder/ \
+    --tuner=subtype \
     --restore_predictor=path/to/save/folder2/ \
     --subtype=1 \
     --tune_epochs=1000 \

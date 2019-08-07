@@ -20,6 +20,7 @@ config.gpu_options.allow_growth = True
 config.log_device_placement = False
 
 sess = tf.Session(config=config)
+# ~ sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 tf.keras.backend.set_session(sess)
 
 ### Arg parser
@@ -188,19 +189,19 @@ if args.model == 'vae_fc':
         x = tf.reshape(sequence,[num,max_size*encode_length])
         x = lyr.dense('encoder.dense1.matrix','encoder.dense1.bias','encoder',max_size*encode_length,512,x)
         x = tf.nn.leaky_relu(x)
-        x = lyr.batchnorm(x,'encoder.batchnorm1.offset','encoder.batchnorm1.scale','encoder.batchnorm1.total_means','encoder.batchnorm1.total_variances','encoder.num_means','encoder',(512,),training=training)
+        x = lyr.batchnorm(x,'encoder.batchnorm1.offset','encoder.batchnorm1.scale','encoder.batchnorm1.average_means','encoder.batchnorm1.average_variances','encoder.num_means','encoder',(512,),training=training)
         
         x = lyr.dense('encoder.dense2.matrix','encoder.dense2.bias','encoder',512,512,x)
         x = tf.nn.leaky_relu(x)
-        x = lyr.batchnorm(x,'encoder.batchnorm2.offset','encoder.batchnorm2.scale','encoder.batchnorm2.total_means','encoder.batchnorm2.total_variances','encoder.num_means','encoder',(512,),training=training)
+        x = lyr.batchnorm(x,'encoder.batchnorm2.offset','encoder.batchnorm2.scale','encoder.batchnorm2.average_means','encoder.batchnorm2.average_variances','encoder.num_means','encoder',(512,),training=training)
         
         x = lyr.dense('encoder.dense3.matrix','encoder.dense3.bias','encoder',512,256,x)
         x = tf.nn.leaky_relu(x)
-        x = lyr.batchnorm(x,'encoder.batchnorm3.offset','encoder.batchnorm3.scale','encoder.batchnorm3.total_means','encoder.batchnorm3.total_variances','encoder.num_means','encoder',(256,),training=training)
+        x = lyr.batchnorm(x,'encoder.batchnorm3.offset','encoder.batchnorm3.scale','encoder.batchnorm3.average_means','encoder.batchnorm3.average_variances','encoder.num_means','encoder',(256,),training=training)
         
         x = lyr.dense('encoder.dense4.matrix','encoder.dense4.bias','encoder',256,latent_dim*2,x)
         x = tf.nn.leaky_relu(x)
-        x = lyr.batchnorm(x,'encoder.batchnorm4.offset','encoder.batchnorm4.scale','encoder.batchnorm4.total_means','encoder.batchnorm4.total_variances','encoder.num_means','encoder',(latent_dim*2,),training=training)
+        x = lyr.batchnorm(x,'encoder.batchnorm4.offset','encoder.batchnorm4.scale','encoder.batchnorm4.average_means','encoder.batchnorm4.average_variances','encoder.num_means','encoder',(latent_dim*2,),training=training)
         
         return x
 	
@@ -210,18 +211,18 @@ if args.model == 'vae_fc':
         x = tf.reshape(state,[num,-1])
         x = lyr.dense('decoder.dense1.matrix','decoder.dense1.bias','decoder',latent_dim,512,x)
         x = tf.nn.leaky_relu(x)
-        x = lyr.batchnorm(x,'decoder.batchnorm1.offset','decoder.batchnorm1.scale','decoder.batchnorm1.total_means','decoder.batchnorm1.total_variances','decoder.num_means','decoder',(512,),training=training)
+        x = lyr.batchnorm(x,'decoder.batchnorm1.offset','decoder.batchnorm1.scale','decoder.batchnorm1.average_means','decoder.batchnorm1.average_variances','decoder.num_means','decoder',(512,),training=training)
         
         x = lyr.dense('decoder.dense2.matrix','decoder.dense2.bias','decoder',512,512,x)
         x = tf.nn.leaky_relu(x)
-        x = lyr.batchnorm(x,'decoder.batchnorm2.offset','decoder.batchnorm2.scale','decoder.batchnorm2.total_means','decoder.batchnorm2.total_variances','decoder.num_means','decoder',(512,),training=training)
+        x = lyr.batchnorm(x,'decoder.batchnorm2.offset','decoder.batchnorm2.scale','decoder.batchnorm2.average_means','decoder.batchnorm2.average_variances','decoder.num_means','decoder',(512,),training=training)
         
         x = lyr.dense('decoder.dense3.matrix','decoder.dense3.bias','decoder',512,256,x)
         x = tf.nn.leaky_relu(x)
-        x = lyr.batchnorm(x,'decoder.batchnorm3.offset','decoder.batchnorm3.scale','decoder.batchnorm3.total_means','decoder.batchnorm3.total_variances','decoder.num_means','decoder',(256,),training=training)
-        
+        x = lyr.batchnorm(x,'decoder.batchnorm3.offset','decoder.batchnorm3.scale','decoder.batchnorm3.average_means','decoder.batchnorm3.average_variances','decoder.num_means','decoder',(256,),training=training)
+
         x = lyr.dense('decoder.dense4.matrix','decoder.dense4.bias','decoder',256,max_size*encode_length,x)
-        x = lyr.batchnorm(x,'decoder.batchnorm4.offset','decoder.batchnorm4.scale','decoder.batchnorm4.total_means','decoder.batchnorm4.total_variances','decoder.num_means','decoder',(max_size*encode_length,),training=training)
+        x = lyr.batchnorm(x,'decoder.batchnorm4.offset','decoder.batchnorm4.scale','decoder.batchnorm4.average_means','decoder.batchnorm4.average_variances','decoder.num_means','decoder',(max_size*encode_length,),training=training)
         
         x = tf.reshape(x,[num,max_size,encode_length])
         
@@ -233,16 +234,16 @@ elif args.model == 'vae_conv':
         
         x = lyr.conv('encoder.conv1.filter','encoder.conv1.bias','encoder',(5,encode_length,args.channels),sequence,max_size)
         x = tf.nn.leaky_relu(x)
-        x = lyr.batchnorm(x,'encoder.batchnorm1.offset','encoder.batchnorm1.scale','encoder.batchnorm1.total_means','encoder.batchnorm1.total_variances','encoder.num_means','encoder',(max_size,args.channels),training=training)
+        x = lyr.batchnorm(x,'encoder.batchnorm1.offset','encoder.batchnorm1.scale','encoder.batchnorm1.average_means','encoder.batchnorm1.average_variances','encoder.num_means','encoder',(max_size,args.channels),training=training)
         
         x = lyr.residual_block('encoder.res1.filter1','encoder.res1.bias1','encoder.res1.filter2','encoder.res1.bias1','encoder',args.channels,args.channels,x,max_size,channels=args.channels)
-        x = lyr.batchnorm(x,'encoder.batchnorm2.offset','encoder.batchnorm2.scale','encoder.batchnorm2.total_means','encoder.batchnorm2.total_variances','encoder.num_means','encoder',(max_size,args.channels),training=training)
+        x = lyr.batchnorm(x,'encoder.batchnorm2.offset','encoder.batchnorm2.scale','encoder.batchnorm2.average_means','encoder.batchnorm2.average_variances','encoder.num_means','encoder',(max_size,args.channels),training=training)
         
         x = tf.reshape(x,(num,max_size*args.channels))
         
         x = lyr.dense('encoder.dense1.matrix','encoder.dense1.bias','encoder',max_size*args.channels,2*latent_dim,x)
         x = tf.nn.leaky_relu(x)
-        output = lyr.batchnorm(x,'encoder.batchnorm3.offset','encoder.batchnorm3.scale','encoder.batchnorm3.total_means','encoder.batchnorm3.total_variances','encoder.num_means','encoder',(2*latent_dim),training=training)
+        output = lyr.batchnorm(x,'encoder.batchnorm3.offset','encoder.batchnorm3.scale','encoder.batchnorm3.average_means','encoder.batchnorm3.average_variances','encoder.num_means','encoder',(2*latent_dim),training=training)
         
         return output
         
@@ -251,20 +252,20 @@ elif args.model == 'vae_conv':
         
         x = lyr.dense('decoder.dense1.matrix','decoder.dense1.bias','decoder',latent_dim,max_size,sequence)
         x = tf.nn.leaky_relu(x)
-        x = lyr.batchnorm(x,'decoder.batchnorm1.offset','decoder.batchnorm1.scale','decoder.batchnorm1.total_means','decoder.batchnorm1.total_variances','decoder.num_means','decoder',(max_size,),training=training)
+        x = lyr.batchnorm(x,'decoder.batchnorm1.offset','decoder.batchnorm1.scale','decoder.batchnorm1.average_means','decoder.batchnorm1.average_variances','decoder.num_means','decoder',(max_size,),training=training)
         
         x = tf.reshape(x,(num,max_size,1))
         
         x = lyr.conv('decoder.conv1.filter','decoder.conv1.bias','decoder',(5,1,args.channels),x,max_size)
         x = tf.nn.leaky_relu(x)
-        x = lyr.batchnorm(x,'decoder.batchnorm2.offset','decoder.batchnorm2.scale','decoder.batchnorm2.total_means','decoder.batchnorm2.total_variances','decoder.num_means','decoder',(max_size,args.channels),training=training)
+        x = lyr.batchnorm(x,'decoder.batchnorm2.offset','decoder.batchnorm2.scale','decoder.batchnorm2.average_means','decoder.batchnorm2.average_variances','decoder.num_means','decoder',(max_size,args.channels),training=training)
         
         x = lyr.residual_block('decoder.res1.filter1','decoder.res1.bias1','decoder.res1.filter2','decoder.res1.bias1','decoder',args.channels,args.channels,x,max_size,channels=args.channels)
-        x = lyr.batchnorm(x,'decoder.batchnorm3.offset','decoder.batchnorm3.scale','decoder.batchnorm3.total_means','decoder.batchnorm3.total_variances','decoder.num_means','decoder',(max_size,args.channels),training=training)
+        x = lyr.batchnorm(x,'decoder.batchnorm3.offset','decoder.batchnorm3.scale','decoder.batchnorm3.average_means','decoder.batchnorm3.average_variances','decoder.num_means','decoder',(max_size,args.channels),training=training)
     
         x = lyr.conv('decoder.conv2.filter','decoder.conv2.bias','decoder',(5,args.channels,encode_length),x,max_size)
         x = tf.nn.leaky_relu(x)
-        output = lyr.batchnorm(x,'decoder.batchnorm4.offset','decoder.batchnorm4.scale','decoder.batchnorm4.total_means','decoder.batchnorm4.total_variances','decoder.num_means','decoder',(max_size,encode_length),training=training)
+        output = lyr.batchnorm(x,'decoder.batchnorm4.offset','decoder.batchnorm4.scale','decoder.batchnorm4.average_means','decoder.batchnorm4.average_variances','decoder.num_means','decoder',(max_size,encode_length),training=training)
 
         return output
 
@@ -380,7 +381,7 @@ def sample_from_latents(x):
 if args.model in ['vae_fc','vae_conv']:
     sequence_in = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)
     correct_labels = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)
-    training = tf.placeholder(dtype=tf.dtypes.bool)
+    training = tf.placeholder(dtype=tf.dtypes.bool,name='training_question')
     
     output_for_printing = decoder(tf.random_normal((1,latent_dim)),training=tf.constant(False))[0]
 
@@ -588,8 +589,9 @@ if 'subtype' in tuner:
     target_tuner = tf.constant(cst.TYPES[args.subtype])
     loss_backtoback_tuner += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner,predicted_subtype_tuner[0]))
 
-tune = tf.train.AdamOptimizer().minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
-
+tuner_optimizer = tf.train.AdamOptimizer()
+tune = tuner_optimizer.minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
+grads_tuner = tuner_optimizer.compute_gradients(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
 ### Run
 
 # Only for LSTM
@@ -605,7 +607,7 @@ def rec(sequence):
     
     return cst.convert_to_string(new_sequence[0])
     
-sess.run(tf.global_variables_initializer())
+sess.run(tf.global_variables_initializer(), {training: True})
 
 if args.model in ['vae_fc','vae_conv']:
     saver_model = tf.train.Saver(tf.get_collection('encoder') + tf.get_collection('decoder'))
@@ -650,7 +652,7 @@ if args.model in ['vae_fc','vae_conv']:
                 b = args.beta*(np.tanh((prev_iters-total_iters*0.4)/(total_iters*0.1))*0.5+0.5)
             _,l = sess.run([train,loss],feed_dict={sequence_in:batch_sequences,correct_labels:batch_sequences,beta:b,training:True})
             
-        print('epoch',epoch,'loss',l)
+        print('epoch',epoch+1,'loss',l)
         prediction = sess.run(output_for_printing)
         print(cst.convert_to_string(prediction,ORDER))
         saver_model.save(sess,args.save_model)
@@ -669,7 +671,7 @@ elif args.model == 'vae_lstm':
                 b = args.beta*(np.tanh((prev_iters-total_iters*0.4)/(total_iters*0.1))*0.5+0.5)
             _,l = sess.run([train,loss],feed_dict={sequence_in:batch_sequences[:,:-1],so_far_reconstructed:batch_sequences[:,:-2],correct_labels:batch_sequences[:,-1],beta:b})
 
-        print('epoch',epoch,'loss',l)
+        print('epoch',epoch+1,'loss',l)
         i = np.random.randint(0,max_size-1)
         test = train_sequences[i:i+1]
         print(rec(test))
@@ -677,7 +679,7 @@ elif args.model == 'vae_lstm':
 
 elif args.model == 'gan':
     for epoch in range(epochs):
-        print('\nepoch ',epoch)
+        print('\nepoch ',epoch+1)
         for batch in range(num_batches):
             batch_sequences = shuffled_sequences[batch*batch_size:(batch+1)*batch_size]
         # Train discriminator
@@ -720,7 +722,7 @@ if 'head_stem' in tuner:
             label_batch = train_labels[batch].astype('float32')
             _,_,lh,ls,ph,ps = sess.run([train_head,train_stem,loss_head,loss_stem,prediction_head,prediction_stem],
                                        feed_dict={input_sequence_head:sequence_batch_head,input_sequence_stem:sequence_batch_stem,label:label_batch})
-        print('Epoch', epoch)
+        print('Epoch', epoch+1)
         print('loss:', lh,ls)
         saver_predictor.save(sess, args.save_predictor)
 
@@ -732,7 +734,7 @@ elif 'subtype' in tuner:
             sequence_batch = train_sequences[batch].astype('float32')
             label_batch = train_labels[batch].astype('float32')
             _,l = sess.run([train_predictor,loss_predictor],feed_dict={input_sequence_predictor:sequence_batch,label_predictor:label_batch})
-        print('Epoch', epoch)
+        print('Epoch', epoch+1)
         print('loss:', l)
         saver_predictor.save(sess, args.save_predictor)
     fails = 0
@@ -784,13 +786,13 @@ for i in range(int(args.num_outputs)):
             if 'subtype' in tuner:
                 p = sess.run(predicted_tuner)
                 print(p[0])
-
+            
     tuned = sess.run(tf.nn.softmax(produced_tuner))
     lat = sess.run(n_input[0])
     results.append(cst.convert_to_string(tuned[0],ORDER))
     latents.append(lat)
     try:
-        subtype = sess.run(prediction_predictor,feed_dict={input_sequence_predictor:tuned})[0]
+        subtype = sess.run(predicted_tuner,feed_dict={input_sequence_predictor:tuned})[0]
         subtypes.append(np.argmax(subtype))
     except:
         print('no subtype predictor available')

@@ -63,6 +63,7 @@ Here are some things I did to see if the outputs I was getting were any good.
 2. Inputting sequences into BLAST can tell you what the nearest match in the PDB is to the synthetic sequence, what subtype it is, and the percent identity between the generated sequence and the real sequence. 
 3. Submitting generated sequences to HMMER can compare them to profile HMMs to give a score of how related they are to the hemagglutinin sequence profile.
 4. Using Rosetta with the Hybridize protocol to do comparative modeling and get structure predictions on generated sequences can tell you how realistic they are if you look at scores. 
+5. Plotting the latent space can be interesting, for example seeing if the subtypes cluster. You can do this by using [TSNE](https://lvdmaaten.github.io/tsne/) to reduce the dimensionality of the latent space (or if you have a 2-dimensional latent space it's easy). 
 
 ## Results
 * The sequence logo made out of aligned generated samples shows that the model does learn which residues are highly conserved and which are variable. It does usually get the highly conserved residues and motifs.
