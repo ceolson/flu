@@ -71,6 +71,4 @@ python generator.py \
 ```
 
 # Notes
-The batch normalization uses a true mean to compute population statistics, so the totals might get large after a lot of training.
-
 Some options are incompatible. For example, if you specify a saved predictor with `--restore_predictor` but your `--subtype` option doesn't need a predictor, this will result in an error.

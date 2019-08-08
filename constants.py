@@ -1,5 +1,6 @@
 import numpy as np
 
+# Convert amino acids to one-hot vectors
 CATEGORIES = {
 'A': [1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
 'R': [0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.], 
@@ -25,6 +26,7 @@ CATEGORIES = {
 '-': [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.],
 }
 
+# Convert amino acids to log distributions over all amino acids
 # https://www.ncbi.nlm.nih.gov/Class/FieldGuide/BLOSUM62.txt
 BLOSUM = {
 'A':   [ 4.,   -1.,   -2.,   -2.,    0.,   -1.,   -1.,    0.,   -2.,   -1.,   -1.,   -1.,   -1.,   -2.,   -1.,    1.,    0.,   -3.,   -2.,    0.,   -2.,   -1.,    0.,   -4],
@@ -53,6 +55,7 @@ BLOSUM = {
 '-':   [-4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,   -4.,    1]
 }
 
+# Convert subtypes to one-hot vectors
 TYPES = {
 1:  [0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
 2:  [0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
@@ -74,19 +77,25 @@ TYPES = {
 18: [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.]
 }
 
+# End of message and start of message characters (used by RNN)
 EOM_VECTOR = np.array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.])
 SOM_VECTOR = np.array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.])
 
+# Head/stem domains
 HEAD = [i for i in range(132,277)]
 STEM = [i for i in range(132)] + [i for i in range(277,576)]
 
+# Convert from vectors back to character representations of amino acids
 ORDER_CATEGORICAL = ['A','R','N','D','C','Q','E','G','H','I','L','K','M','F','P','S','T','W','Y','V','X','-','<EOM>','<SOM>']
 ORDER_BLOSUM = ['A','R','N','D','C','Q','E','G','H','I','L','K','M','F','P','S','T','W','Y','V','A','Q','X','-','<EOM>','<SOM>']
 
+# Convert a matrix of amino acids encoded as vectors to a sequence string
+# Doesn't matter if BLOSUM-style or one-hot vectors because just cares about argmax
 def convert_to_string(prediction,ORDER):
     string = ''
     for i in range(len(prediction)):
-        prediction[i,-2] = 0.
+        prediction[i,-3] = 0.      # Don't output "unknown"
+        # ~ # OPTION to do this probabilistically
         # ~ scaling_factor = np.sum(prediction[i])
         # ~ probs = np.divide(prediction[i],scaling_factor)
         # ~ index = np.random.choice(len(prediction[i]),1,p=probs)

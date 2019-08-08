@@ -53,6 +53,7 @@ args = parser.parse_args()
 if args.random_seed:
     tf.set_random_seed(args.random_seed)
 
+# Turn strings of [location]-[residue]-[weight] into dictionaries
 def design_parser(string):
     design = {}
     weights = {}
@@ -89,7 +90,7 @@ print('|  Data encoding: {: <38s}|'.format(args.encoding))
 print('|  Tuner: {: <46s}|'.format(args.tuner))
 print('+-------------------------------------------------------+')
 
-# Array to convert from categorical to residue letter
+# Which array to convert from categorical to residue letter
 if args.encoding == 'categorical':
     ORDER = cst.ORDER_CATEGORICAL
     CATEGORIES = cst.CATEGORIES
@@ -131,6 +132,7 @@ elif args.encoding == 'blosum':
 
 f.close()
 
+# Select one subtype of data if requested
 if args.data != 'all' and args.data != 'aligned':
     subtype = int(args.data[1:])
     
@@ -273,47 +275,47 @@ elif args.model == 'vae_lstm':
     encoder_lstm = tf.keras.layers.CuDNNLSTM(latent_dim*2,return_state=True)
     decoder_lstm = tf.keras.layers.CuDNNLSTM(latent_dim)
     
-    def encoder(sequence):
+    def encoder(sequence,training=True):
         out,h,c = encoder_lstm(sequence)
         return [h,c]
     
-    def decoder(state,so_far):
+    def decoder(state,so_far,training=True):
         out = decoder_lstm(so_far,initial_state=state)
         logits = lyr.dense('decoder.dense.matrix','decoder.dense.bias','decoder',latent_dim,encode_length,out)
         return logits
 
 elif args.model == 'gan':
-    def generator(seed,training=True):
-        num = tf.shape(sequence)[0]
+    def generator(seed,training=tf.constant(True)):
+        num = tf.shape(seed)[0]
         
         seed = tf.reshape(seed,(num,100))
         
         seed2 = lyr.dense('generator.dense1.matrix','generator.dense1.bias','generator',100,max_size*64,seed)
         seed2 = tf.nn.leaky_relu(seed2)
+        seed2 = lyr.batchnorm(seed2,'generator.batchnorm1.offset','generator.batchnorm1.scale','generator.batchnorm1.average_means','generator.batchnorm1.average_variances','generator.num_means','generator',(max_size*64,),training=training)
+        
         seed2 = tf.reshape(seed2,[num,max_size,64])
 
         x = lyr.residual_block('generator.res1.filter1','generator.res1.bias1','generator.res1.filter2','generator.res1.bias2','generator',64,64,seed2,max_size)
+        x = lyr.batchnorm(x,'generator.batchnorm2.offset','generator.batchnorm2.scale','generator.batchnorm2.average_means','generator.batchnorm2.average_variances','generator.num_means','generator',(max_size,64),training=training)
+        
         x = lyr.residual_block('generator.res2.filter1','generator.res2.bias1','generator.res2.filter2','generator.res2.bias2','generator',64,64,x,max_size)
+        x = lyr.batchnorm(x,'generator.batchnorm3.offset','generator.batchnorm3.scale','generator.batchnorm3.average_means','generator.batchnorm3.average_variances','generator.num_means','generator',(max_size,64),training=training)
+        
         x = lyr.residual_block('generator.res3.filter1','generator.res3.bias1','generator.res3.filter2','generator.res3.bias2','generator',64,64,x,max_size)
-        x = lyr.residual_block('generator.res4.filter1','generator.res4.bias1','generator.res4.filter2','generator.res4.bias2','generator',64,64,x,max_size)
-        x = lyr.residual_block('generator.res5.filter1','generator.res5.bias1','generator.res5.filter2','generator.res5.bias2','generator',64,64,x,max_size)
-
+        x = lyr.batchnorm(x,'generator.batchnorm4.offset','generator.batchnorm4.scale','generator.batchnorm4.average_means','generator.batchnorm4.average_variances','generator.num_means','generator',(max_size,64),training=training)
 
         x = lyr.conv('generator.conv1.filter','generator.conv1.bias','generator',(5,64,encode_length),x,max_size)
         x = tf.nn.softmax(x)
         return x
 
-    def discriminator(sequence):
+    def discriminator(sequence,training=tf.constant(True)):
         num = tf.shape(sequence)[0]
         
         x = lyr.conv('discriminator.conv1.filter','discriminator.conv1.bias','discriminator',(5,encode_length,64),sequence,max_size)
         x = tf.nn.leaky_relu(x)
         
         x = lyr.residual_block('discriminator.res1.filter1','discriminator.res1.bias1','discriminator.res1.filter2','discriminator.res1.bias1','discriminator',64,64,x,max_size)
-        x = lyr.layernorm(x,num)
-        x = lyr.residual_block('discriminator.res2.filter1','discriminator.res2.bias1','discriminator.res2.filter2','discriminator.res2.bias1','discriminator',64,64,x,max_size)
-        x = lyr.layernorm(x,num)
-        x = lyr.residual_block('discriminator.res3.filter1','discriminator.res3.bias1','discriminator.res3.filter2','discriminator.res3.bias1','discriminator',64,64,x,max_size)
         x = lyr.layernorm(x,num)
         x = lyr.residual_block('discriminator.res4.filter1','discriminator.res4.bias1','discriminator.res4.filter2','discriminator.res4.bias1','discriminator',64,64,x,max_size)
         x = lyr.layernorm(x,num)
@@ -370,35 +372,33 @@ elif 'subtype' in tuner:
 
 ### Set up graph
 
-training_switch = tf.placeholder(dtype=tf.dtypes.bool)
-
+# Helper function to take means and log std deviations and output normally distributed variables.
 def sample_from_latents(x):
     means = x[:,:latent_dim]
     log_vars = x[:,latent_dim:]
-    base = tf.keras.backend.random_normal(shape=[latent_dim,])
+    base = tf.random_normal(shape=[latent_dim,])
     return means + tf.exp(log_vars) * base
 
 if args.model in ['vae_fc','vae_conv']:
-    sequence_in = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)
-    correct_labels = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)
-    training = tf.placeholder(dtype=tf.dtypes.bool,name='training_question')
+    sequence_in = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)       # Training sequence
+    correct_labels = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)        # Goal reconstruction (should be training sequence again)
     
-    output_for_printing = decoder(tf.random_normal((1,latent_dim)),training=tf.constant(False))[0]
-
-    correct_labels_softmax = tf.nn.softmax(correct_labels)
+    training = tf.placeholder(dtype=tf.dtypes.bool)     # Whether this is training time or evaluation time
     
-    beta = tf.placeholder(dtype=tf.dtypes.float32)
+    output_for_printing = decoder(tf.random_normal((1,latent_dim)),training=tf.constant(False))[0]      # Convenience tensor for printing
+    
+    beta = tf.placeholder(dtype=tf.dtypes.float32)      # Coefficient for KL loss
     
     latent_seeds = encoder(sequence_in,training=training)
     latent = sample_from_latents(latent_seeds)
-
     
     logits = decoder(latent,training=training)
-    predicted_character = tf.nn.softmax(logits)
+    reconstruction = tf.nn.softmax(logits)
     
     if args.encoding == 'categorical':
         accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels,logits)
-    elif args.encoding == 'blosum':
+    elif args.encoding == 'blosum':         # Treat BLOSUM rows as logits
+        correct_labels_softmax = tf.nn.softmax(correct_labels)
         accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels_softmax,logits)
 
     def compute_kl_loss(latent_seeds):
@@ -417,25 +417,24 @@ if args.model in ['vae_fc','vae_conv']:
     train = optimizer.minimize(loss)
     
 elif args.model == 'vae_lstm':
-    sequence_in = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)
-    so_far_reconstructed = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)
-    correct_labels = tf.placeholder(shape=[None,encode_length],dtype=tf.dtypes.float32)
+    sequence_in = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)       # Training sequence
+    so_far_reconstructed = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)         # Training sequence up to a certain point
+    correct_labels = tf.placeholder(shape=[None,encode_length],dtype=tf.dtypes.float32)        # What the next character should be
     
-    correct_labels_softmax = tf.nn.softmax(correct_labels)
-    
-    beta = tf.placeholder(float)
+    beta = tf.placeholder(float)        # Coefficient for KL loss
 
-    latent_seeds_h,latent_seeds_c = encoder(sequence_in,encoder_lstm)
+    latent_seeds_h,latent_seeds_c = encoder(sequence_in)
     latent_h = sample_from_latents(latent_seeds_h)
     latent_c = sample_from_latents(latent_seeds_c)
     latent = [latent_h,latent_c]
 
-    logits = decoder(latent,so_far_reconstructed,decoder_lstm)
+    logits = decoder(latent,so_far_reconstructed)
     predicted_character = tf.nn.softmax(logits)
 
     if args.encoding == 'categorical':
         accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels,logits)
-    elif args.encoding == 'blosum':
+    elif args.encoding == 'blosum':         # Treat BLOSUM rows as logits
+        correct_labels_softmax = tf.nn.softmax(correct_labels)
         accuracy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(correct_labels_softmax,logits)
 
     def compute_kl_loss(latent_h_seeds,latent_c_seeds):
@@ -458,14 +457,15 @@ elif args.model == 'vae_lstm':
     train = optimizer.minimize(loss,var_list=encoder_lstm.weights+decoder_lstm.weights)
 
 elif args.model == 'gan':
-    real_images = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)
-    noise = tf.placeholder(float,name='noise')
+    real_images = tf.placeholder(shape=[None,None,encode_length],dtype=tf.dtypes.float32)       # Real samples
+    noise = tf.placeholder(float,name='noise')      # Noise for generator
+    training = tf.placeholder(tf.dtypes.bool)       # Whether this is training time
 
     fake_images = generator(noise)
     fake_images = tf.identity(fake_images,name='fake_images')
 
     # Sampling images in the encoded space between the fake ones and the real ones
-
+    
     interpolation_coeffs = tf.random_uniform(shape=(tf.shape(real_images)[0],1,1))
     sampled_images = tf.add(real_images,tf.multiply(tf.subtract(fake_images,real_images),interpolation_coeffs),name='sampled_images')
 
@@ -498,19 +498,21 @@ elif args.model == 'gan':
     train_generator = gen_optimizer.minimize(gen_loss,var_list=tf.get_collection('generator'),name='train_generator')
     grads_generator = gen_optimizer.compute_gradients(gen_loss,var_list=tf.get_collection('generator'))
 
-loss_backtoback_tuner = 0.
+
+loss_backtoback_tuner = 0.      # Loss tensor that all tuning objectives will add on to
     
 if 'design' in tuner:
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
-        n_input = tf.get_variable('n_input',trainable=True,collections=['tuning_var',tf.GraphKeys.GLOBAL_VARIABLES],shape=[1,latent_dim])
+        n_input = tf.get_variable('n_input',trainable=True,collections=['tuning_var',tf.GraphKeys.GLOBAL_VARIABLES],shape=[1,latent_dim])       # Latent variable to be tuned
 
     design,design_weights = design_parser(args.design)
     
     if args.model == 'gan':
-        produced_tuner = generator(n_input)
+        produced_tuner = generator(n_input,training=tf.constant(False))
     else:
         produced_tuner = decoder(n_input,training=tf.constant(False))
     
+    # Construct dictionary of target residues
     target_tuner = {}
     if args.encoding == 'blosum':
         for key in design.keys():
@@ -518,16 +520,17 @@ if 'design' in tuner:
     else:
         for key in design.keys():
             target_tuner[key] = CATEGORIES[design[key]]
-
+    
+    # Sum up all the cross entropies
     for key in design.keys():
         temp = tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner[key],produced_tuner[0,key-1])
         loss_backtoback_tuner += design_weights[key] * temp
     
 if 'head_stem' in tuner:
-    input_sequence_head = tf.placeholder(shape=[None,head_size,encode_length],dtype=tf.dtypes.float32)
-    input_sequence_stem = tf.placeholder(shape=[None,stem_size,encode_length],dtype=tf.dtypes.float32)
+    input_sequence_head = tf.placeholder(shape=[None,head_size,encode_length],dtype=tf.dtypes.float32)      # Head domain of a training sequence
+    input_sequence_stem = tf.placeholder(shape=[None,stem_size,encode_length],dtype=tf.dtypes.float32)      # Stem domain of a training sequence
 
-    label = tf.placeholder(shape=[None,num_classes],dtype=tf.dtypes.float32)
+    label = tf.placeholder(shape=[None,num_classes],dtype=tf.dtypes.float32)        # True label of training sequence
 
     prediction_logits_head = predictor_head(input_sequence_head)
     prediction_head = tf.nn.softmax(prediction_logits_head)
@@ -541,73 +544,95 @@ if 'head_stem' in tuner:
     loss_stem = tf.nn.softmax_cross_entropy_with_logits_v2(label,prediction_logits_stem)
     loss_stem = tf.reduce_mean(loss_stem)
 
+    # Training the head-stem predictor
     optimizer = tf.train.GradientDescentOptimizer(0.01)
     train_head = optimizer.minimize(loss_head,var_list=tf.get_collection('predictor_head'))
     train_stem = optimizer.minimize(loss_stem,var_list=tf.get_collection('predictor_stem'))
     
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
-        n_input = tf.get_variable('n_input',trainable=True,collections=['tuning_var',tf.GraphKeys.GLOBAL_VARIABLES],shape=[1,latent_dim])
+        n_input = tf.get_variable('n_input',trainable=True,collections=['tuning_var',tf.GraphKeys.GLOBAL_VARIABLES],shape=[1,latent_dim])       # Latent variable to be tuned 
         
     if args.model == 'gan':
-        produced_tuner = tf.nn.softmax(generator(n_input))
+        produced_tuner = tf.nn.softmax(generator(n_input,training=tf.constant(False)))
     else:
         produced_tuner = tf.nn.softmax(decoder(n_input,training=tf.constant(False)))
     
+    # Make predictions for head and stem
     predicted_head_subtype_tuner = predictor_head(produced_tuner[:,132:277])
     predicted_stem_subtype_tuner = predictor_stem(tf.concat([produced_tuner[:,:132],produced_tuner[:,277:]],axis=1))
     predicted_head_tuner = tf.nn.softmax(predicted_head_subtype_tuner)
     predicted_stem_tuner = tf.nn.softmax(predicted_stem_subtype_tuner)
 
+    # Construct target subtype vectors
     target_head_tuner = tf.constant(cst.TYPES[headstem_parser(args.head_stem)[0]])
     target_stem_tuner = tf.constant(cst.TYPES[headstem_parser(args.head_stem)[1]])
+    
     loss_head_tuner = tf.nn.softmax_cross_entropy_with_logits_v2(target_head_tuner,predicted_head_subtype_tuner[0])
     loss_stem_tuner = tf.nn.softmax_cross_entropy_with_logits_v2(target_stem_tuner,predicted_stem_subtype_tuner[0])
 
     loss_backtoback_tuner += tf.reduce_mean(loss_head_tuner + loss_stem_tuner)
     
 if 'subtype' in tuner:
-    input_sequence_predictor = tf.placeholder(shape=[None,max_size,encode_length],dtype=tf.dtypes.float32)
-    label_predictor = tf.placeholder(shape=[None,num_classes],dtype=tf.dtypes.float32)
+    input_sequence_predictor = tf.placeholder(shape=[None,max_size,encode_length],dtype=tf.dtypes.float32)      # Training sequence
+    label_predictor = tf.placeholder(shape=[None,num_classes],dtype=tf.dtypes.float32)          # True label of training sequence
+    
     prediction_logits_predictor = predictor(input_sequence_predictor)
     prediction_predictor = tf.nn.softmax(prediction_logits_predictor)
+    
     loss_predictor = tf.nn.softmax_cross_entropy_with_logits_v2(label_predictor,prediction_logits_predictor)
     loss_predictor = tf.reduce_mean(loss_predictor)
-
-    optimizer_predictor = tf.train.GradientDescentOptimizer(0.01)
+    
+    # Training the subtype predictor
+    optimizer_predictor = tf.train.GradientDescentOptimizer(0.01)       
     train_predictor = optimizer_predictor.minimize(loss_predictor,var_list=tf.get_collection('predictor'))
     
     with tf.variable_scope('',reuse=tf.AUTO_REUSE):
-        n_input = tf.get_variable('n_input',trainable=True,collections=['tuning_var',tf.GraphKeys.GLOBAL_VARIABLES],shape=[1,latent_dim])
+        n_input = tf.get_variable('n_input',trainable=True,collections=['tuning_var',tf.GraphKeys.GLOBAL_VARIABLES],shape=[1,latent_dim])       # Latent variable to be tuned 
         
     if args.model == 'gan':
-        produced_tuner = tf.nn.softmax(generator(n_input))
+        produced_tuner = tf.nn.softmax(generator(n_input,training=tf.constant(False)))
     else:
         produced_tuner = tf.nn.softmax(decoder(n_input,training=tf.constant(False)))
         
+    # Make predictions    
     predicted_subtype_tuner = predictor(produced_tuner)
     predicted_tuner = tf.nn.softmax(predicted_subtype_tuner)
+    
+    # Construct target subtype vector 
     target_tuner = tf.constant(cst.TYPES[args.subtype])
+    
     loss_backtoback_tuner += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(target_tuner,predicted_subtype_tuner[0]))
 
-tuner_optimizer = tf.train.AdamOptimizer()
-tune = tuner_optimizer.minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
-grads_tuner = tuner_optimizer.compute_gradients(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
+# Unless tuner is empty, set up tuning
+if 'subtype' in tuner or 'head_stem' in tuner or 'design' in tuner:
+    tuner_optimizer = tf.train.AdamOptimizer()
+    tune = tuner_optimizer.minimize(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
+    grads_tuner = tuner_optimizer.compute_gradients(loss_backtoback_tuner,var_list=tf.get_collection('tuning_var'))
+    
 ### Run
 
-# Only for LSTM
+# Only for LSTM, way to generate full sequence
+# Start with a start of message symbol, Keep predicting next character until getting an end of message character
 def rec(sequence):
     new_sequence = np.zeros([1,1,encode_length])
     new_sequence[0,0,-1] = 1.
     
     new_sequence = sequence[:,:100,:]
     
-    while (np.argmax(new_sequence[0,-1]) != np.argmax(EOM_VECTOR) and np.shape(new_sequence)[1] < 1000):
+    while (np.argmax(new_sequence[0,-1]) != np.argmax(cst.EOM_VECTOR) and np.shape(new_sequence)[1] < 1000):
         character = sess.run(predicted_character,feed_dict={sequence_in:sequence,so_far_reconstructed:new_sequence})
         new_sequence = np.concatenate((new_sequence,character.reshape(1,1,encode_length)),axis=1)
     
-    return cst.convert_to_string(new_sequence[0])
-    
-sess.run(tf.global_variables_initializer(), {training: True})
+    return cst.convert_to_string(new_sequence[0],ORDER)
+
+# Apparently boolean tensors can be buggy, so initialize "training" explicitly
+# unless it is not defined (this happens with RNN)
+try:
+    sess.run(tf.global_variables_initializer(), {training: True})
+except NameError:
+    sess.run(tf.global_variables_initializer())
+
+# Set up saving and restoring
 
 if args.model in ['vae_fc','vae_conv']:
     saver_model = tf.train.Saver(tf.get_collection('encoder') + tf.get_collection('decoder'))
@@ -633,27 +658,32 @@ print('#######################################')
 
 print('Training model')
 epochs = args.train_model_epochs
-num_batches = int(np.floor(len(train_sequences)/batch_size))
+num_batches = int(np.floor(len(train_sequences)/batch_size)) # How many batches to get through the whole training set
 
 if args.model in ['vae_fc','vae_conv']:
+    # Print sample before any training
     print('initial')
     prediction = sess.run(output_for_printing)
     print(cst.convert_to_string(prediction,ORDER))
     
+    # Train
     for epoch in range(epochs):
         shuffled_sequences = np.random.permutation(train_sequences)
         for batch in range(num_batches):
-            batch_sequences = shuffled_sequences[batch*batch_size:(batch+1)*batch_size]
+            batch_sequences = shuffled_sequences[batch*batch_size:(batch+1)*batch_size]     # Take a batch-worth of the shuffled sequences
+            
+            # Implement simulated annealing for the KL loss if training a vae for the first time (not restoring an old model)
             prev_iters = epoch*num_batches + batch
             total_iters = epochs*num_batches
             if args.restore_model:
                 b = args.beta
             else:
                 b = args.beta*(np.tanh((prev_iters-total_iters*0.4)/(total_iters*0.1))*0.5+0.5)
+                
             _,l = sess.run([train,loss],feed_dict={sequence_in:batch_sequences,correct_labels:batch_sequences,beta:b,training:True})
             
         print('epoch',epoch+1,'loss',l)
-        prediction = sess.run(output_for_printing)
+        prediction = sess.run(output_for_printing)      # Sample
         print(cst.convert_to_string(prediction,ORDER))
         saver_model.save(sess,args.save_model)
 
@@ -661,17 +691,22 @@ elif args.model == 'vae_lstm':
     for epoch in range(epochs):
         shuffled_sequences = np.random.permutation(train_sequences)
         for batch in range(num_batches):
-            stop_point = np.random.randint(2,max_size-1)
-            batch_sequences = shuffled_sequences[batch*batch_size:(batch+1)*batch_size,:1+stop_point]
+            stop_point = np.random.randint(2,max_size-1)        # Which character to make the model predict
+            batch_sequences = shuffled_sequences[batch*batch_size:(batch+1)*batch_size,:1+stop_point]     # Take a batch-worth of the shuffled sequences, cut off at the cutoff point
+            
+            # Implement simulated annealing for the KL loss if training a vae for the first time (not restoring an old model)
             prev_iters = epoch*num_batches + batch
             total_iters = epochs*num_batches
             if args.restore_model:
                 b = args.beta
             else:
                 b = args.beta*(np.tanh((prev_iters-total_iters*0.4)/(total_iters*0.1))*0.5+0.5)
+                
             _,l = sess.run([train,loss],feed_dict={sequence_in:batch_sequences[:,:-1],so_far_reconstructed:batch_sequences[:,:-2],correct_labels:batch_sequences[:,-1],beta:b})
 
         print('epoch',epoch+1,'loss',l)
+        
+        # Try a sample, starting at at random point
         i = np.random.randint(0,max_size-1)
         test = train_sequences[i:i+1]
         print(rec(test))
@@ -679,24 +714,30 @@ elif args.model == 'vae_lstm':
 
 elif args.model == 'gan':
     for epoch in range(epochs):
+        shuffled_sequences = np.random.permutation(train_sequences)
         print('\nepoch ',epoch+1)
-        for batch in range(num_batches):
-            batch_sequences = shuffled_sequences[batch*batch_size:(batch+1)*batch_size]
+        
         # Train discriminator
+        for batch in range(num_batches):
+            batch_sequences = shuffled_sequences[batch*batch_size:(batch+1)*batch_size]         # Take a batch-worth of the shuffled sequences
+        
+            # Track changes in loss in case you want to train until convergence (not used currently)
             d_loss_delta = np.infty
             current_loss = np.infty
+            
+            # Train discriminator 5 times per batch
             for i in range(5):
                 noise_input = np.random.normal(0,1,(batch_size,100))
-                _,d_loss,grads = sess.run([train_discriminator,diff,grads_discriminator],feed_dict={real_images:batch_sequences,noise:noise_input})
-                print('Training discriminator',d_loss)
+                _,d_loss = sess.run([train_discriminator,diff],feed_dict={real_images:batch_sequences,noise:noise_input})
+                
                 d_loss_delta = current_loss - d_loss
                 current_loss = d_loss
+
                 
         # Train generator
         for batch in range(num_batches):
             noise_input = np.random.normal(0,1,(batch_size,100))
-            _,g_loss,grads = sess.run([train_generator,gen_loss,grads_generator],feed_dict={noise:noise_input})
-            print('Training generator',g_loss)
+            _,g_loss = sess.run([train_generator,gen_loss],feed_dict={noise:noise_input})
 
         print('Generator loss: ',g_loss)
         print('Discriminator loss: ',d_loss)
@@ -716,12 +757,14 @@ if 'head_stem' in tuner:
         shuffle = np.random.permutation(range(len(train_sequences)))
         for i in range(num_batches):
             batch = shuffle[i*batch_size:(i+1)*batch_size]
-            sequence_batch = train_sequences[batch].astype('float32')
-            sequence_batch_head = sequence_batch[:,cst.HEAD]
-            sequence_batch_stem = sequence_batch[:,cst.STEM]
-            label_batch = train_labels[batch].astype('float32')
+            sequence_batch = train_sequences[batch].astype('float32')       # Training sequences
+            sequence_batch_head = sequence_batch[:,cst.HEAD]            # Training sequences head domain
+            sequence_batch_stem = sequence_batch[:,cst.STEM]            # Training sequences stem domain
+            label_batch = train_labels[batch].astype('float32')         # True subtype
+            
             _,_,lh,ls,ph,ps = sess.run([train_head,train_stem,loss_head,loss_stem,prediction_head,prediction_stem],
                                        feed_dict={input_sequence_head:sequence_batch_head,input_sequence_stem:sequence_batch_stem,label:label_batch})
+        
         print('Epoch', epoch+1)
         print('loss:', lh,ls)
         saver_predictor.save(sess, args.save_predictor)
@@ -731,18 +774,23 @@ elif 'subtype' in tuner:
         shuffle = np.random.permutation(range(len(train_sequences)))
         for i in range(num_batches):
             batch = shuffle[i*batch_size:(i+1)*batch_size]
-            sequence_batch = train_sequences[batch].astype('float32')
-            label_batch = train_labels[batch].astype('float32')
+            sequence_batch = train_sequences[batch].astype('float32')       # Training sequences
+            label_batch = train_labels[batch].astype('float32')             # True subtypes
+            
             _,l = sess.run([train_predictor,loss_predictor],feed_dict={input_sequence_predictor:sequence_batch,label_predictor:label_batch})
+        
         print('Epoch', epoch+1)
         print('loss:', l)
         saver_predictor.save(sess, args.save_predictor)
+    
+    # Do a quick measurement of test accuracy
     fails = 0
     for _ in range(100):
         nums = np.random.permutation(range(len(test_sequences)))
         batch = test_sequences[nums[:batch_size]]
-        preds = sess.run(prediction_predictor,feed_dict={input_sequence_predictor:batch})
+        preds = sess.run(prediction_predictor,feed_dict={input_sequence_predictor:batch})       # Model predictions
         for i in range(len(preds)):
+            # Test if incorrect
             if np.argmax(preds[i]) != np.argmax(test_labels[nums[i]]):
                 fails += 1
     print((100*batch_size-fails)/(100*batch_size))
@@ -750,55 +798,41 @@ elif 'subtype' in tuner:
 print('\n')
 print('Tuning')
 
-results = []
-latents = []
-subtypes = []
+results = []        # Will hold a sequence for each output
+latents = []        # Will hold latent variables for each output
+subtypes = []       # Will hold a subtype prediction for each output
 
+# Do a round of tuning for each output
 for i in range(int(args.num_outputs)):
     print('output number {}'.format(i))
     epochs = args.tune_epochs
-
-    # ~ if args.tuner == 'head_stem':
-        # ~ for i in range(epochs):
-            # ~ _,l,p1,p2 = sess.run([tune,loss_backtoback_tuner,predicted_head_tuner,predicted_stem_tuner])
-            # ~ if i%int(epochs/10)==0:
-                # ~ print('Epoch',i,'loss',l)
-                # ~ print(p1[0])
-                # ~ print(p2[0])
-                
-    # ~ elif args.tuner == 'design':
-        # ~ for i in range(epochs):
-            # ~ _,l = sess.run([tune,loss_backtoback_tuner])
-            # ~ if i%int(epochs/10)==0:
-                # ~ print('Epoch',i,'loss',l)
-
-    # ~ elif args.tuner == 'subtype':
-        # ~ for i in range(epochs):
-            # ~ _,l,p = sess.run([tune,loss_backtoback_tuner,predicted_tuner])
-            # ~ if i%int(epochs/10)==0:
-                # ~ print('Epoch',i,'loss',l)
-                # ~ print(p[0])
                 
     for i in range(epochs):
         _,l = sess.run([tune,loss_backtoback_tuner])
         if i%int(epochs/10)==0:
             print('Epoch',i,'loss',l)
+            
+            # If the tuner is just subtype, it's nice to see what subtype is being predicted
             if 'subtype' in tuner:
                 p = sess.run(predicted_tuner)
                 print(p[0])
             
-    tuned = sess.run(tf.nn.softmax(produced_tuner))
-    lat = sess.run(n_input[0])
+    tuned = sess.run(tf.nn.softmax(produced_tuner))     # Get tuned sequence
+    lat = sess.run(n_input[0])                          # Get tuned latent variables
     results.append(cst.convert_to_string(tuned[0],ORDER))
     latents.append(lat)
+    
+    # If we have a subtype tuner, use it to predict subtypes (can be a nice summary)
     try:
         subtype = sess.run(predicted_tuner,feed_dict={input_sequence_predictor:tuned})[0]
         subtypes.append(np.argmax(subtype))
     except:
         print('no subtype predictor available')
     
+    # Re-initialize tuning variable to something random to tune again
     sess.run(n_input.initializer)
 
+# Print outputs
 for i in range(int(args.num_outputs)):
     print('>sample{}'.format(i))
     print(results[i])
