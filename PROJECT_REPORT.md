@@ -6,6 +6,8 @@ Author: Conlan Olson
 
 Date: Summer 2019
 
+_NOTE: I had the project working fairly well when I did a group meeting presentation on 08/01/2019 but since then I've changed a lot about the model architectures (mostly, how the batch normalization works). I'm not sure yet that this new stuff works better. So, I included a snapshot of this project when it was working decently as a fall back at `flu_08012019/`._
+
 # Project goals
 This project was intended to create a flexible model capable of generating realistic but synthetic hemagglutinin sequences that can be tuned for a variety of purposes. I approached it from a machine learning perspective. Keep in mind that I do not have a background in biology.
 
@@ -58,6 +60,9 @@ So I could tune certain positions having certain residues, I also implemented a 
 I searched for all complete HA sequences on fludb.org and got about 87,000 sequences. I used 40,000 for training. I tried to align them using MUSCLE and got crazy gaps everywhere because there were so many (even though I did them in batches of 2,500). I decided that my model was probably learning to compensate for misalignment anyways so I didn't align the sequences for most of the project.
 
 I encoded each amino acid as a one-hot vector with length 22 (20 amino acids, 1 unknown, 1 gap). I am also trying to encode each amino acid with its row in a replacement matrix like BLOSUM62. These rows can be interpreted as the log probability distribution of a residue over all amino acids. This would give the model some knowledge about which aa's are similar and which are really important to keep exactly the same. Using this encoding tends to result in models that train but are very hard to tune. I don't know why this is and am still working on it.
+
+# Searching for good hyperparameters
+I did a big scan of possible hyperparameters
 
 # Results
 ## Ways of validating the model
