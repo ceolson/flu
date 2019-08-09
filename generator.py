@@ -30,10 +30,10 @@ parser.add_argument('--data', type=str, help='data to train on, one of "all", "h
 parser.add_argument('--encoding', type=str, help='data encoding, either "categorical" or "blosum"', default='categorical')
 parser.add_argument('--model', type=str, help='model to use, one of "gan", "vae_fc", "vae_conv", or "vae_lstm"', default='vae_fc')
 parser.add_argument('--beta', type=float, help='if using a VAE, the coefficient for the KL loss', default=5)
-parser.add_argument('--tuner', type=str, help='what to tune for, a combination of "subtype", "head_stem", or "design" (comma separated)', default='design')
-parser.add_argument('--design', type=str, help='if using design tuner, list of strings "[position]-[residue]-[weight]" (weight is optional), e.g. "15-R-1.0,223-C-5.0"', default='1-M')
-parser.add_argument('--subtype', type=int, help='if using subtype tuner, which subtype you want', default=1)
-parser.add_argument('--head_stem', type=str, help='if using head-stem tuner, a string of "[head subtype],[stem subtype]"', default='1,1')
+parser.add_argument('--tuner', type=str, help='what to tune for, a combination of "subtype", "head_stem", or "design" (comma separated)')
+parser.add_argument('--design', type=str, help='if using design tuner, list of strings "[position]-[residue]-[weight]" (weight is optional), e.g. "15-R-1.0,223-C-5.0"')
+parser.add_argument('--subtype', type=int, help='if using subtype tuner, which subtype you want')
+parser.add_argument('--head_stem', type=str, help='if using head-stem tuner, a string of "[head subtype],[stem subtype]"')
 parser.add_argument('--train_model_epochs', type=int, help='how many epochs to train the generative model', default=0)
 parser.add_argument('--train_predictor_epochs', type=int, help='how many epochs to train the predictor model', default=0)
 parser.add_argument('--tune_epochs', type=int, help='how many epochs to tune', default=0)
@@ -47,6 +47,7 @@ parser.add_argument('--num_outputs', help='how many samples to print out', defau
 parser.add_argument('--random_seed', type=int, help='random seed to make execution deterministic, default is random')
 parser.add_argument('--return_latents', type=int, help='1 if you want to print the latent variable with the sequence')
 parser.add_argument('--channels', type=int, help='number of channels in convolution hidden layers', default=16)
+parser.add_argument('--reconstruct', type=str, help='a sequence that you want to encode and decode')
 
 args = parser.parse_args()
 
@@ -75,9 +76,12 @@ def headstem_parser(string):
     head,stem = map(int,string.split(','))
     return head,stem
 
-tuner = args.tuner.split(',')
+if args.tuner:
+    tuner = args.tuner.split(',')
+else:
+    tuner = []
 
-print(             '+-------------------------------------------------------+')
+print('+-------------------------------------------------------+')
 print('|  RUN INFORMATION                                      |')
 print('|  ===================================================  |')
 print('|  Model type: {: <41s}|'.format(args.model))
@@ -85,10 +89,30 @@ print('|  Latent dimension: {: <35}|'.format(args.latent_dimension))
 if args.model == 'vae_conv': 
     print('|  Channels: {: <43}|'.format(args.channels))
 else:
-    print('|  Channels: not applicable                             |')      
+    print('|  Channels: not applicable                             |')
+if args.model in ['vae_conv','vae_fc','vae_lstm']:
+    print('|  Beta: {: <47}|'.format(args.beta))
+else:
+    print('|  Beta: not applicable                                 |')
 print('|  Data encoding: {: <38s}|'.format(args.encoding))
-print('|  Tuner: {: <46s}|'.format(args.tuner))
+if args.tuner: 
+    print('|  Tuner: {: <46s}|'.format(args.tuner))
+else: 
+    print('|  Tuner: none                                          |')
+print('|  Model epochs: {: <39}|'.format(args.train_model_epochs))
+print('|  Predictor epochs: {: <35}|'.format(args.train_predictor_epochs))
+print('|  Tune epochs: {: <40}|'.format(args.tune_epochs))
 print('+-------------------------------------------------------+')
+
+print('Subtype, Head/Stem, Design')
+print(args.subtype, args.head_stem, args.design)
+print()
+print('Restore locations')
+print(args.restore_model,args.restore_predictor)
+print()
+print('Save locations')
+print(args.save_model,args.save_predictor)
+print()
 
 # Which array to convert from categorical to residue letter
 if args.encoding == 'categorical':
@@ -385,7 +409,7 @@ if args.model in ['vae_fc','vae_conv']:
     
     training = tf.placeholder(dtype=tf.dtypes.bool)     # Whether this is training time or evaluation time
     
-    output_for_printing = decoder(tf.random_normal((1,latent_dim)),training=tf.constant(False))[0]      # Convenience tensor for printing
+    output_for_printing = tf.nn.softmax(decoder(tf.random_normal((1,latent_dim)),training=tf.constant(False)))[0]      # Convenience tensor for printing
     
     beta = tf.placeholder(dtype=tf.dtypes.float32)      # Coefficient for KL loss
     
@@ -463,6 +487,8 @@ elif args.model == 'gan':
 
     fake_images = generator(noise)
     fake_images = tf.identity(fake_images,name='fake_images')
+    
+    output_for_printing = tf.nn.softmax(generator(noise,training=tf.constant(False)))[0]
 
     # Sampling images in the encoded space between the fake ones and the real ones
     
@@ -558,8 +584,8 @@ if 'head_stem' in tuner:
         produced_tuner = tf.nn.softmax(decoder(n_input,training=tf.constant(False)))
     
     # Make predictions for head and stem
-    predicted_head_subtype_tuner = predictor_head(produced_tuner[:,132:277])
-    predicted_stem_subtype_tuner = predictor_stem(tf.concat([produced_tuner[:,:132],produced_tuner[:,277:]],axis=1))
+    predicted_head_subtype_tuner = predictor_head(produced_tuner[:,cst.HEAD_START:cst.HEAD_STOP])
+    predicted_stem_subtype_tuner = predictor_stem(tf.concat([produced_tuner[:,:cst.HEAD_START],produced_tuner[:,cst.HEAD_STOP:]],axis=1))
     predicted_head_tuner = tf.nn.softmax(predicted_head_subtype_tuner)
     predicted_stem_tuner = tf.nn.softmax(predicted_stem_subtype_tuner)
 
@@ -743,7 +769,7 @@ elif args.model == 'gan':
         print('Discriminator loss: ',d_loss)
             
         # Print a sample string    
-        prediction = sess.run(tf.nn.softmax(generator(tf.random_normal((1,100)),training=tf.constant(False))))[0]
+        prediction = sess.run(output_for_printing)
         print(cst.convert_to_string(prediction, ORDER))
         saver_model.save(sess, args.save_model)
 
@@ -803,37 +829,65 @@ latents = []        # Will hold latent variables for each output
 subtypes = []       # Will hold a subtype prediction for each output
 
 # Do a round of tuning for each output
-for i in range(int(args.num_outputs)):
-    print('output number {}'.format(i))
-    epochs = args.tune_epochs
+if args.tuner:
+    for i in range(int(args.num_outputs)):
+        print('output number {}'.format(i))
+        epochs = args.tune_epochs
+                    
+        for i in range(epochs):
+            _,l = sess.run([tune,loss_backtoback_tuner])
+            if i%int(epochs/10)==0:
+                print('Epoch',i,'loss',l)
                 
-    for i in range(epochs):
-        _,l = sess.run([tune,loss_backtoback_tuner])
-        if i%int(epochs/10)==0:
-            print('Epoch',i,'loss',l)
-            
-            # If the tuner is just subtype, it's nice to see what subtype is being predicted
-            if 'subtype' in tuner:
-                p = sess.run(predicted_tuner)
-                print(p[0])
-            
-    tuned = sess.run(tf.nn.softmax(produced_tuner))     # Get tuned sequence
-    lat = sess.run(n_input[0])                          # Get tuned latent variables
-    results.append(cst.convert_to_string(tuned[0],ORDER))
-    latents.append(lat)
-    
-    # If we have a subtype tuner, use it to predict subtypes (can be a nice summary)
+                # If the tuner is just subtype, it's nice to see what subtype is being predicted
+                if 'subtype' in tuner:
+                    p = sess.run(predicted_tuner)
+                    print(p[0])
+                
+        tuned = sess.run(tf.nn.softmax(produced_tuner))     # Get tuned sequence
+        lat = sess.run(n_input[0])                          # Get tuned latent variables
+        results.append(cst.convert_to_string(tuned[0],ORDER))
+        latents.append(lat)
+        
+        # If we have a subtype tuner, use it to predict subtypes (can be a nice summary)
+        try:
+            subtype = sess.run(predicted_tuner,feed_dict={input_sequence_predictor:tuned})[0]
+            subtypes.append(np.argmax(subtype))
+        except:
+            print('no subtype predictor available')
+        
+        # Re-initialize tuning variable to something random to tune again
+        sess.run(n_input.initializer)
+
+print('\n')
+print('Reconstruction')
+if args.reconstruct:
+    print(args.reconstruct)
+    encoded_original = cst.convert_to_encoding(args.reconstruct,CATEGORIES)
+    encoded_original = np.reshape(encoded_original,(1,max_size,encode_length))
     try:
-        subtype = sess.run(predicted_tuner,feed_dict={input_sequence_predictor:tuned})[0]
-        subtypes.append(np.argmax(subtype))
-    except:
-        print('no subtype predictor available')
-    
-    # Re-initialize tuning variable to something random to tune again
-    sess.run(n_input.initializer)
+        encoded_reconstructed = sess.run(reconstruction,feed_dict={sequence_in:encoded_original,training:False})[0]
+        print(cst.convert_to_string(encoded_reconstructed,ORDER))
+    except NameError:
+        print('model not compatible with reconstruction')
+
+latent1 = np.array([-8.78616646e-02,2.54285127e-01,-2.39989594e-01,-2.56966859e-01,6.61173820e-01,2.65609562e-01,-5.62671125e-01,1.13751709e-01,2.80384094e-01,-2.46588394e-01,8.56676698e-03,-8.01984444e-02,-6.16456568e-01,5.48728347e-01,2.64586836e-01,9.16523859e-02,4.57099289e-01,1.89074099e-01,1.86758071e-01,-6.86501116e-02,2.45273337e-01,1.58737019e-01,-1.57438025e-01,3.63574661e-02,2.90591985e-01,-2.75255382e-01,3.59096259e-01,-8.34906846e-02,-1.39299601e-01,1.52063012e-01,1.00856319e-01,1.66754618e-01,1.14208512e-01,3.71811330e-01,1.60202459e-01,5.69860220e-01,-2.90873777e-02,3.68038476e-01,1.12610407e-01,3.35178137e-01,7.81247839e-02,1.40872642e-01,9.93680134e-02,-3.07024539e-01,4.21428591e-01,3.88146520e-01,-2.65082031e-01,-2.15322599e-01,5.26463747e-01,5.20111620e-01,-4.48422611e-01,-2.92156011e-01,7.88032636e-03,3.64912003e-01,1.57954916e-02,1.70940191e-01,-3.22309315e-01,-4.24387157e-01,2.87565976e-01,1.12168625e-01,-3.37853134e-01,5.37228510e-02,4.26308602e-01,-2.30144203e-01,-3.15926746e-02,-3.33032370e-01,4.76296902e-01,-1.42026067e-01,-2.99532473e-01,7.39579350e-02,-2.19608560e-01,3.37747149e-02,-1.17672689e-01,-1.69587210e-01,5.17762065e-01,2.50261545e-01,-2.43298784e-01,-1.30311667e-03,2.68177334e-02,-4.21793386e-02,-9.74674150e-02,-1.88970596e-01,1.91645309e-01,6.60884827e-02,-3.76344807e-02,-1.90046877e-01,-2.33416453e-01,-9.74612683e-02,-1.38587566e-05,-8.75953734e-02,8.02328289e-02,2.04630308e-02,-3.12964953e-02,2.74672091e-01,2.02791020e-01,4.60430145e-01,2.91427433e-01,-1.65472448e-01,2.48493195e-01,1.92133144e-01],dtype=np.float32)
+latent2 = np.array([-0.03270355,0.03946022,-0.04642215,0.05495419,0.0771457,0.51958895,-0.28585795,0.00070127,0.01797779,0.2698575,-0.13362812,-0.2636208,-0.06565533,0.3637063,0.25317386,0.29645896,0.15327702,0.18783416,-0.00382194,0.06740722,0.04744477,-0.25432673,-0.18908288,0.2732132,-0.12797353,0.03606429,-0.33432168,-0.4172894,-0.44882825,-0.2794896,-0.20246154,0.01508206,0.18074925,0.41876137,0.04188212,-0.08180775,0.24349701,-0.26878783,0.17448135,0.34058142,-0.27591175,0.11490995,-0.08870767,-0.06127287,-0.12378976,0.25667405,-0.05978367,0.33430743,-0.26534897,0.3766493,0.47101778,-0.02175809,0.05814211,0.4212924,0.01716817,0.0640059,-0.04441477,-0.0521503,-0.37863544,0.26898506,-0.21880047,-0.06928809,0.23115705,-0.4236487,0.00372865,0.2552795,0.10724288,0.23758915,0.0096574,0.29054835,-0.01176035,0.2462711,-0.0555782,0.389012,-0.31767932,0.34081706,0.24057971,-0.03324224,-0.05747395,-0.03615857,0.08025739,-0.17162405,-0.14984497,0.15114363,-0.06177906,0.08155174,0.01023227,0.3823118,0.03527178,0.05087311,0.28903526,-0.07757697,-0.28466088,0.391604,0.3605601,-0.3306399,0.00394653,-0.2758481,0.29160807,0.0163339],dtype=np.float32)
+diff = latent2 - latent1
+
+latent_increment = [0. for i in range(25)] + [0.2] + [0. for i in range(74)]
+latent_increment = np.array(latent_increment,dtype=np.float32)
+
+latents = []
+for i in [0,1,2,3,4,5,6]:
+    latents.append(latent1 + i*latent_increment)
+for latent in latents:
+    result = sess.run(decoder(np.reshape(latent,(1,latent_dim)),training=tf.constant(False)))[0]
+    print(cst.convert_to_string(result,ORDER))
+
 
 # Print outputs
-for i in range(int(args.num_outputs)):
+for i in range(len(results)):
     print('>sample{}'.format(i))
     print(results[i])
     if args.return_latents:

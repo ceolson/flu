@@ -1,3 +1,9 @@
+
+# coding: utf-8
+
+# In[59]:
+
+
 import deepchem as dc
 import numpy as np
 import tensorflow as tf
@@ -9,6 +15,9 @@ import scipy
 import h5py
 
 np.set_printoptions(threshold=np.inf)
+
+
+# In[65]:
 
 
 # https://www.ncbi.nlm.nih.gov/Class/FieldGuide/BLOSUM62.txt
@@ -39,6 +48,50 @@ BLOSUM = {
 '-':   [-4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,   -4,    1]
 }
 
+# ~ CATEGORIES = {
+# ~ 'A': [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+# ~ 'R': [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'N': [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'D': [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'C': [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'Q': [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, A0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'E': [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'G': [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'H': [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'I': [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'L': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+# ~ 'K': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+# ~ 'M': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+# ~ 'F': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+# ~ 'P': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], 
+# ~ 'S': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+# ~ 'T': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], 
+# ~ 'W': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0], 
+# ~ 'Y': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0], 
+# ~ 'V': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}
+
+# ~ CATEGORIES = {
+# ~ 'A': [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+# ~ 'R': [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'N': [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'D': [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'C': [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'Q': [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'E': [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'G': [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'H': [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'I': [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'L': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+# ~ 'K': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+# ~ 'M': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+# ~ 'F': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+# ~ 'P': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], 
+# ~ 'S': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+# ~ 'T': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], 
+# ~ 'W': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], 
+# ~ 'Y': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], 
+# ~ 'V': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]}
+
 CATEGORIES = {
 'A': [1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
 'R': [0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.], 
@@ -67,12 +120,12 @@ CATEGORIES = {
 ORDER = ['A','R','N','D','C','Q','E','G','H','I','L','K','M','F','P','S','T','W','Y','V','X','-']
 
 
-# Read om fastas
+# In[77]:
+
+
 fastas = SeqIO.parse('/projects/ml/flu/fludb_data/525916981168-ProteinFastaResults.fasta','fasta')
 arr = [line for line in fastas]
 arr_new = []
-
-# Reject sequences without a subtype
 for elt in arr:
     try:
         int(elt.id[1])
@@ -80,14 +133,28 @@ for elt in arr:
     except:
         pass
 
-# Pad sequences up to max length
+
+# In[78]:
+
+
 max_size = max(len(elt.seq) for elt in arr_new)
 count = 0
 for i in range(len(arr_new)):
     count += max_size-len(arr_new[i].seq)
     arr_new[i].seq = np.pad(arr_new[i].seq, (0,max_size-len(arr_new[i].seq)), 'constant', constant_values='-')
+    
+    
+# ~ all_seqs = []
+# ~ for elt in arr_new:
+    # ~ string = ''
+    # ~ for letter in elt.seq:
+        # ~ string += letter
+    # ~ all_seqs.append(string)
+# ~ all_seqs = np.array(all_seqs)
+# ~ print(np.random.permutation(all_seqs)[:1000])
 
-# Convert sequences to categorical or BLOSUM encoding
+# In[68]:
+
 sequences_cat = []
 sequences_blosum = []
 
@@ -98,17 +165,17 @@ for elt in arr_new:
         try:
             sequence_cat.append(CATEGORIES[letter])
         except:
-            sequence_cat.append(CATEGORIES['X'])        # Replace any unknown characters with 'X'
+            sequence_cat.append(CATEGORIES['X'])
         try:
             sequence_blosum.append(BLOSUM[letter])
         except:
-            sequence_blosum.append(BLOSUM['X'])         # Replace any unknown characters with 'X'
+            sequence_blosum.append(BLOSUM['X'])
     sequences_cat.append(sequence_cat)
     sequences_blosum.append(sequence_blosum)
 sequences_cat = np.array(sequences_cat)
 sequences_blosum = np.array(sequences_blosum)
 
-# Read in subtype labels
+
 labels = []
 for elt in arr_new:
     number = 0
@@ -119,7 +186,9 @@ for elt in arr_new:
     labels.append(number)
 labels = np.array(labels)
 
-# Shuffle sequences
+# In[79]:
+
+
 permutation = np.random.permutation(range(len(labels)))
 labels = labels[permutation]
 sequences_blosum = sequences_blosum[permutation]
@@ -138,7 +207,15 @@ test_labels = keras.utils.to_categorical(labels[65001:],19)
 test_sequences_blosum = sequences_blosum[65001:]
 test_sequences_categorical = sequences_cat[65001:]
 
+# In[80]:
 
+train_sequences_h3 = []
+for i in range(len(train_sequences_categorical)):
+    if np.argmax(train_labels[i]) == 3:
+        train_sequences_h3.append(train_sequences_categorical[i])
+
+
+import h5py
 file = h5py.File('/projects/ml/flu/fludb_data/processed_data_525916981168.h5','w')
 file.create_dataset('train_labels', data=train_labels)
 file.create_dataset('train_sequences_blosum', data=train_sequences_blosum)
@@ -149,5 +226,39 @@ file.create_dataset('valid_sequences_categorical', data=valid_sequences_categori
 file.create_dataset('test_labels', data=test_labels)
 file.create_dataset('test_sequences_blosum', data=test_sequences_blosum)
 file.create_dataset('test_sequences_categorical', data=test_sequences_categorical)
+
+file.create_dataset('train_sequences_h3', data=train_sequences_h3)
 file.close()
+
+# ~ sequence0 = 'MNTQILVFIACVLIEAKGDKICLGHHAVANGTKVNTLTERGIEVVNATETVETANIGKICTQGKRPTDLGQCGLLGTLIGPPQCDQFLEFESNLIIERREGNDVCYPGKFTNEESLRQILRGSGGVDKESMGFTYSGIRTNGTTSACRRSGSSFYAEMKWLLSNSDNAAFPQMTKSYRNPRNKPALIVWGIHHSGSTTEQTRLYGSGNKLITVGSSKYQQSFTPSPGARPQVNGQSGRIDFHWLLLDPNDTVTFTFNGAFIAPNRASFFRGESLGVQSDVPLDSNCGGDCFHSGGTIVSSLPFQNINSRTVGKCPRYVKQPSLLLATGMRNVPENPKTRGLFGAIAGFIENGWEGLIDGWYGFRHQNAQGEGTAADYKSTQSAIDQITGKLNRLIDKTNQQFELIDNEFNEIEQQIGNVINWTRDSMTEVWSYNAELLVAMENQHTIDLADSEMNKLYERVRKQLRENAEEDGTGCFEIFHKCDDQCMESIRNNTYDHTQYRAKSLQNRIQIDPVKLSSGYKDIILWFSFGASCFLLLAIAMGLVFICIKNGNMRCTICI'
+# ~ sequence0_blosum = [BLOSUM[residue] for residue in sequence0]
+# ~ sequence0_cat = [CATEGORIES[residue] for residue in sequence0]
+# ~ sequences_blosum = [sequence0_blosum]
+# ~ sequences_cat = [sequence0_cat]
+
+# ~ for i in range(9999):
+    # ~ mutation = np.random.choice(['A','R','N','D','C','Q','E','G','H','I','L','K','M','F','P','S','T','W','Y','V'])
+    
+    # ~ temp_blosum = []
+    # ~ index = np.random.randint(0,559)
+    # ~ for i in range(len(sequence0_blosum)):
+        # ~ if i != index:
+            # ~ temp_blosum.append(sequence0_blosum[i])
+        # ~ else:
+            # ~ temp_blosum.append(BLOSUM[mutation])
+    # ~ sequences_blosum.append(temp_blosum)
+    
+    # ~ temp_cat = []
+    # ~ for i in range(len(sequence0_cat)):
+        # ~ if i != 4:
+            # ~ temp_cat.append(sequence0_cat[i])
+        # ~ else:
+            # ~ temp_cat.append(CATEGORIES[mutation])
+    # ~ sequences_cat.append(temp_cat)
+
+# ~ import h5py
+# ~ data_file = h5py.File('/home/ceolson0/Documents/test_fastas3.h5','w')
+# ~ data_file.create_dataset('sequences_blosum',data=np.array(sequences_blosum,dtype='float32'))
+# ~ data_file.create_dataset('sequences_cat',data=np.array(sequences_cat,dtype='float32'))
+# ~ data_file.close()
 
