@@ -28,6 +28,8 @@ OPTION                      DEFAULT VALUE     DESCRIPTION
   --random_seed                                 random seed to make execution deterministic, default is random
   --return_latents                              1 if you want to print the latent variable with the sequence
   --channels                   16               number of channels in convolution hidden layers
+  --reconstruct                                 if you want to pass a sequence through a VAE
+  --print_from_latents                          print sequences from a comma separated list of latent variable arrays
 ```
 
 # Example usages

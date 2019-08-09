@@ -6,7 +6,7 @@ Author: Conlan Olson
 
 Date: Summer 2019
 
-___NOTE____: I had the project working fairly well when I did a group meeting presentation on 08/01/2019 but since then I've changed a lot about the model architectures (mostly, how the batch normalization works). I'm not sure yet that this new stuff works better. So, I included a snapshot of this project when it was working decently as a fall back at `flu_08012019/`. Another thing to keep in mind is that most of the figures in this report were produced by the old model._
+___NOTE___: _I had the project working fairly well when I did a group meeting presentation on 08/01/2019 but since then I've changed a lot about the model architectures (mostly, how the batch normalization works). I'm not sure yet that this new stuff works better. So, I included a snapshot of this project when it was working decently as a fall back at `flu_08012019/`. Another thing to keep in mind is that most of the figures in this report were produced by the old model._
 
 # Project goals
 This project was intended to create a flexible model capable of generating realistic but synthetic hemagglutinin sequences that can be tuned for a variety of purposes. I approached it from a machine learning perspective. Keep in mind that I do not have a background in biology.
