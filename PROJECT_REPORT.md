@@ -17,9 +17,9 @@ The rest of this report will treat the model as a modular system that requires:
 3. True hemagglutinin sequences to learn from
 
 # The generative model
-The first type of training paradigm I tried was a GAN (generative adversarial model) ([reference](https://arxiv.org/abs/1406.2661)), but a GAN never worked for me. I used a Wasserstein GAN with the training method from [this paper](https://arxiv.org/abs/1704.00028) to try to stabilize the training. I tried a variety of architectures, including some fully connected and some convolutional and used a lot of different choices for hyperparameters. The training was always extremely slow and never produced realistic-looking sequences (and even sometimes collapsed completely into generating strings of 'A's). I ended up dropping, but there is no reason why a GAN shouldn't work for this problem. You can see what I think is my best implementation of a GAN in `generator.py` with the `--model=gan` option, but it still doesn't work.
+The first type of training paradigm I tried was a [GAN (generative adversarial model)](https://arxiv.org/abs/1406.2661), but a GAN never worked for me. I used a Wasserstein GAN with the training method from [this paper](https://arxiv.org/abs/1704.00028) to try to stabilize the training. I tried a variety of architectures, including some fully connected and some convolutional and used a lot of different choices for hyperparameters. The training was always extremely slow and never produced realistic-looking sequences (and even sometimes collapsed completely into generating strings of 'A's). I ended up dropping, but there is no reason why a GAN shouldn't work for this problem. You can see what I think is my best implementation of a GAN in `generator.py` with the `--model=gan` option, but it still doesn't work.
 
-I moved to using a VAE (variational autoencoder) ([reference](https://arxiv.org/abs/1312.6114)) which worked really well. Below are some of the options I've tried.
+I moved to using a [VAE (variational autoencoder)](https://arxiv.org/abs/1312.6114) which worked really well. Below are some of the options I've tried.
 
 ## VAE design and hyperparameters
 ### Architecture
@@ -43,7 +43,10 @@ I used batch normalization to speed up training (and prevent weird runaway train
 
 # The predictor
 ## Subtype predictor
-I trained a residual neural network to predict subtypes from sequences, which worked well. Initially I gave it 5 residual blocks, each with two convolutional layers, but I suspect this was way overkill. I've since reduced the number of layers. This problem is easy, the predictor gets >99% accuracy on a test set with quick training. For fun, I also looked at a saliency map to see what the model picks up on. It seems to care about a few single-point mutations that distinguish subtypes, as well as motifs in different locations, indicating an insertion/deletion.
+I trained a residual neural network to predict subtypes from sequences, which worked well. Initially I gave it 5 residual blocks, each with two convolutional layers, but I suspect this was way overkill. I've since reduced the number of layers. This problem is easy, the predictor gets >99% accuracy on a test set with quick training.
+
+For fun, I also looked at a saliency map to see what the model picks up on. It seems to care about a few single-point mutations that distinguish subtypes, as well as motifs in different locations, indicating an insertion/deletion.
+![saliency](images/saliency.png)
 
 ## Head/stem predictor
 So I could tune the head and stem subtype separately, I also trained a subtype predictor that was only allowed to look at the stem domain and one that was only allowed to look at the head domain. For this project, I defined the head as residues 135-277, though I've sinced learned that a more standard definition is 46-278. 
@@ -63,15 +66,66 @@ Here are some things I did to see if the outputs I was getting were any good.
 2. Inputting sequences into BLAST can tell you what the nearest match in the PDB is to the synthetic sequence, what subtype it is, and the percent identity between the generated sequence and the real sequence. 
 3. Submitting generated sequences to HMMER can compare them to profile HMMs to give a score of how related they are to the hemagglutinin sequence profile.
 4. Using Rosetta with the Hybridize protocol to do comparative modeling and get structure predictions on generated sequences can tell you how realistic they are if you look at scores. 
-5. Plotting the latent space can be interesting, for example seeing if the subtypes cluster. You can do this by using [TSNE](https://lvdmaaten.github.io/tsne/) to reduce the dimensionality of the latent space (or if you have a 2-dimensional latent space it's easy). 
+5. Exploting the latent space by hand.
 
 ## Results
-* The sequence logo made out of aligned generated samples shows that the model does learn which residues are highly conserved and which are variable. It does usually get the highly conserved residues and motifs.
-* When putting samples into BLAST, the samples that it was easy to tune for (for example, tuning for subtype 1) were good at matching with that subtype and had high (>90%) percent identities. The harder ones (for example, tuning for subtype 8) often didn't match with an 8 and the sequence identities were lower. Similarly, when tuning for a chimeric HA, the sequence identities were fairly low (30-60%).
-* There was a good correlation between Rosetta score and percent similarity to a PDB protein. The weirder generated samples often had problems such as:
-    * Missing highly conserved cysteines to make disulfide bonds.
-    * Mutating hydrophobic resides in the core to polar ones (without satisfying hydrogen bonds).
-    * (Rarely) messing up highly conserved residues in the receptor binding site.
-* "Designing" residues works well, but can sometimes result in unrealistic proteins if you are asking for something two weird.
-* It works nicely to design in the whole RBS.
+### Sequence logo
+The sequence logo made out of aligned generated samples shows that the model does learn which residues are highly conserved and which are variable. It does usually get the highly conserved residues and motifs.
+
+![logo](images/logo.png)
+### Using BLAST to compare to real HAs
+When putting samples into BLAST, the samples that it was easy to tune for (for example, tuning for subtype 1) were good at matching with that subtype and had high (>90%) percent identities. The harder ones (for example, tuning for subtype 8) often didn't match with an 8 and the sequence identities were lower. Similarly, when tuning for a chimeric HA, the sequence identities were fairly low (30-60%).
+
+Histograms:
+
+![h1](images/1.png)
+![h3](images/3.png)
+![h5](images/5.png)
+![h8](images/8.png)
+![h9](images/9.png)
+![h10](images/10.png)
+
+(Colors are subtype, blue is H1 and green is H3)
+
+![hs13](images/hs13.png)
+![hs31](images/hs31.png)
+
+### Rosetta modeling
+There was a good correlation between Rosetta score and percent similarity to a PDB protein:
+
+![h1](images/h1s_plot.png)
+![h3](images/h3s_plot.png)
+
+The weirder generated samples often had problems such as:
+* Missing highly conserved cysteines to make disulfide bonds (green is generated, blue is a real HA):
+    
+![cys](images/cys.png)    
+* Mutating hydrophobic resides in the core to polar ones (without satisfying hydrogen bonds):
+
+![polar](images/bun.png)
+* (Rarely) messing up highly conserved residues in the receptor binding site:
+
+![rbs](images/rbs.png)
+
+### Design
+"Designing" residues works well, but can sometimes result in unrealistic proteins if you are asking for something two weird. It works nicely to design in the whole RBS.
+
+### Other experiments
 * You can look at compensatory mutations by designing in a whole sequence, then changing a few positions and giving them a high weight. Then the model has to make those mutations while staying close to the original sequence. The problem with this is that I was having trouble finding the right balance between a model that was not so flexible that it just made the mutation straight-up (even if it was unrealistic) but also flexible enough that it could compensate -- sometimes the model would just switch to a whole different protein.
+* It's also fun to look at interpolations between sequences. You can do this by generating two sequences (or tuning to generate any sequence that you want) and printing their latent variable representations, then printing the decoding of latent variables at various points along a line connecting the two.
+
+```
+MEKIVLLLAIINLVKSDQICIGYHANNSTEQVDTIMEKNVTVTHAQDILEKTHNGKLCDLDGVKPLILRDCSVAGWLLGNPMCDEFLNVSEWSYIVEKINPANDLCYPGNFNDYEELKHLLSRINHFEKIQIIPKSSWSDHEASSGVSSACPYQGRSSFFRNVVWLIKKNNAYPTIKXSYNNTNQEDLLVLWGIHHPNDAAEQTRLYQNPTTYISVGTSTLNLFLVPKIATRSKVNGQSGRMEFFWTILKPNDAINFESNGNFIAPENAYKIVKKGDSTIMKSELEYGNCNTKCQTPIGAINSSMPFHNIHPLTIGECPKYVKSNRLVLATGLRNSPQGERRRKKRGLFGAIAGFIEGGWQGMVDGWYGYHHSNEQGSGYAADKESTQKAIDGVTNKVNSIIDKMNTQFEAVGREFNNLERRIENLNKKMEDGFLDVWTYNAELLVLMENERTLDFHDSNVKNLYDKVRLQLRDNAKELGNGCFEFYHRCDNECMESVRNGTYDYPQYSEEARLKREEISGVKLESIGTYQILSIYSTVASSLALAIXVAGLSLWMCSNGSLQCRXCIXFMRXXXL
+MEKIVLLLATISLVKSDQICIGYHANNSTEQVDTIMEKNVTVTHAQDILEKTHNGKLCDGDGVKPLILRDCSVAGWLLGNPMCDEFLNVSEWSYIVEKINPANDLCYPGNFNDYEELKHLLSRINHFEKIQIIPKSSWSDHDASSGVSSACPYQGRSSFFRNVVWLIKKNNAYPTIKTSYNNTNQEDLLVLWGIHHPNDAAEQTRLYQNPTTYISVGTSTLNLFLVPKIATRSKVNGQSGRMEFFWTILKPNDAINFESNGNFIAPENAYKIVKKGDSTIMKSELEYGNCNTKCQTPIGAINSSMPFHNIHPLTIGECPKYVKSNRLVLATGLRNSPQGERRRKKRGLFGAIAGFIEGGWQGMVDGWYGYXHSNEQGSGYAADXESTQKAIDGVTNKVNSIIDKMNTQFEAVGREFNNLERRIKNLNKKMEDGFLDVWTYNAELLVLMENERTLDFHDSNVXNLYDKVRLQLRDNAKELGNGCFEFYHRCDNECMESVRNGTYDYPQYSEEARLNREEISGVKLESIGTYQILSIYSTVASSLALAIXVAGLSLWMCSNGSLQCRXCII-XRXXX-
+MEKIVVLLAXTSAVKSDQICIGYHANNSTEQVDTIMEKNDTVTHAQDILEKTHNGKLCRKDRVKALLLRDCSVAGWLLGNPMCXEFLNVAEWSYIVEKINPANDLCYPGNFNDQEELKHLLSSINHFEKIQIIPKSSWSDHDASSNVSSAAPYNRRGSXFRNVVWIIKKNXAYPTIKTSYSNDNXEDLLVLWGIHHPNDSAESTDLYQNPTTYASVGTSXLNLFRVPKIAIRSKVNGQSGRMEFFWTXLKXNSAINFESNFPFIAPENVYKIVKKRNFTIMKSELEYSNCDTKCQTPIGAINNSMPFHNIHPLTIGECPKPVKSKRLVLATGLRNSPQGERRIRKRGLFGAIAGFIEGGWQGMVDYWYGYQHSNXQGSGYAADXTSTQKAIDGVTNKINSXIXKTNTTFVAVGKEFNNLEIRIKNLNKKDXDGFLDVWTYNAEVLVEMENERTHDFHDSNVXNLYVRVRLQLRDKAKELGNFCFEFYHRCDNMCMESVGNYTYDYPQYSAEQXLNREDIVGVKSESIGTYQILSIYSTVASSRAXAXXTAALFLWMCSNGSLQCRXCIX-XXXXX-
+MEKILVVLLCTFATANADTLCIGYHANNSTDTVDTVLEKDVTVHASVNLLKDKHNGKCCKLRGVAPLHLGKCNAAGWLLGNPECEFLSTASSWSYIVETSPSDNGTCYPGDFIDYELRREQLSSVXSFERQEIFPKTSSWPDHDSNKGVSAACPHAGAKXFYKNLIILVKKGNSYPKLSKSYINNKDKEVLVLWGIHHPSTTAKQQSLYQNADAYVFVGSXRYSIKFKPEIASRPKVRGGEGRMNYYWTXVESGDKITFESTGNRVVPRYAFAKERNAXSGIIISDASVHDCNTTCRTPNGNINTSLPFHNIHPITIGKCPKXVKSTKLRLATGLRNVPSIQSRGLFLAIAGFIEGGWTGMVDGWYGYHHQNEQGSGYAADLKSTQNAIDKITNKVNSVIEIMNTQFTAVGKEFNHLEKRIENLNKEVDDGFLDIWTYNAELXVLLENERTLDYHDSNVKXLYGKVRSQLKLNAKLIGXGCFEFYHKCDDTCMESEKNGTYDYPKYSKEAKVXREEIDGVKLESTYIYQILAIYVTSAVSLVLAVXLGAISFWMLSXLSLSIRCXXXIX-XXXXX-
+MEAILVVLLYTFATANADTLCIGYHANNSTDTVDTVLEKDVTVTHSVNLLEDKHNGKLCKLRGVAPLHLGKCNIAGWILGNPECESLSTASSWSYIVETSSSDNGTCYPGDFIDYEELREQLSSVSSFERFEIFPKTSSWPDHDSNKGVTAACPHAGAKSFYKNLIWLVKKGNSYPKLSKSYINDKGKEVLVLWGIHHPSTSADQQSLYQNADAYVFVGSSRYSKKFKPEIAIRPKVRDQEGRMNYYWTLVEPGDKITFEATGNLVVPRYAFAMERNAGSGIIISDTSVHDCNTTCRTPKGAINTSLPFHNIHPITIGKCPKYVKSTKLRLATGLRNVPSIQSRGLFGAIAGFIEGGWTGMVDGWYGYHHQNEQGSGYAADLKSTQNAIDKITNKVNSVIEKMNTQFTAVGKEFNHLEKRIENLNKKVDDGFLDIWTYNAELLVLLENERTLDYHDSNVKXLYEKVRSQLKNNAKEIGNGCFEFYHKCDNTCMESVKNGTYDYPKYSEEAKLNREEIDGVKLESTRIYQILAIYSTVASSLVLVVSLGAISFWMCSNLSLQCRICXXX-XXXXXX-
+MKAILVVLLYTFATANADTLCIGYHANNSTDTVDTVLEKNVTVTHSVNLLEDKHNGKLCKLRGVAPLHLGKCNIAGWILGNPECESLSTASSWSYIVETSSSDNGTCYPGDFIDYEELREQLSSVSSFERFEIFPKTSSWPDHDPNKGVTAACPHAGAKSFYKNLIWLVKKGNSYPKLSKSYINDKGKEVLVLWGIHHPSTSADQQSLYQNADAYVFVGTSRYSKKFKPEIAIRPKVRDQEGRMNYYWTLVEPGDKITFEATGNLVVPRYAFAMERNAGSGIIISDTPVHDCNTTCQTPKGAINTSLPFQNIHPITIGKCPKYVKSTKLRLATGLRNVPSIQSRGLFGAIAGFIEGGWTGMVDGWYGYHHQNEQGSGYAADLKSTQNAIDEITNKVNSVIEKMNTQFTAVGKEFNHLEKRIENLNKKVDDGFLDIWTYNAELLVLLENERTLDYHDSNVKNLYEKVRSQLKNNAKEIGNGCFEFYHKCDNTCMESVKNGTYDYPKYSEEAKLNREEIDGVKLESTRIYQILAIYSTVASSLVLVVSLGAISFWMCSNGSLQCRICXXX-XXXXXXX
+```
+
+* Looking at what each one of the latent variables codes for is interesting. You can do this by starting with a latent code and changing it by some vector in latent space gradually and seeing what happens to the sequences. Note that with large latent spaces, a lot of the variables are probably useless so you have to find one that is actually salient. If you go slow enough, you can find residues that co-vary.
+* You can plot points in latent space against subtype to see if the subtypes cluster. You can do this by using [T-SNE](https://lvdmaaten.github.io/tsne/) to reduce the dimensionality of the latent space (or if you have a 2-dimensional latent space it's easy). 
+
+Here is a plot with a two-dimensional latent space where the subtypes cluster nicely. This doesn't always happen.
+
+![latent](images/latent.png)

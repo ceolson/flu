@@ -48,6 +48,7 @@ parser.add_argument('--random_seed', type=int, help='random seed to make executi
 parser.add_argument('--return_latents', type=int, help='1 if you want to print the latent variable with the sequence')
 parser.add_argument('--channels', type=int, help='number of channels in convolution hidden layers', default=16)
 parser.add_argument('--reconstruct', type=str, help='a sequence that you want to encode and decode')
+parser.add_argument('--print_from_latents', type=str, help='a comma-separated list of latent variable arrays that you want to decode')
 
 args = parser.parse_args()
 
@@ -75,6 +76,16 @@ def design_parser(string):
 def headstem_parser(string):
     head,stem = map(int,string.split(','))
     return head,stem
+    
+def print_from_latents_parser(string):
+    latent_strings = string.split('],[')
+    latents = []
+    for s in latent_strings:
+        latent_array_strings = s.split(',')
+        latent_array = map(lambda x: float(x.strip('[]')),latent_array_strings)
+        latent_array = np.array(list(latent_array),dtype=np.float32)
+        latents.append(latent_array)
+    return latents
 
 if args.tuner:
     tuner = args.tuner.split(',')
@@ -638,12 +649,10 @@ if 'subtype' in tuner or 'head_stem' in tuner or 'design' in tuner:
 ### Run
 
 # Only for LSTM, way to generate full sequence
-# Start with a start of message symbol, Keep predicting next character until getting an end of message character
+# Keep predicting next character until getting an end of message character
 def rec(sequence):
     new_sequence = np.zeros([1,1,encode_length])
     new_sequence[0,0,-1] = 1.
-    
-    new_sequence = sequence[:,:100,:]
     
     while (np.argmax(new_sequence[0,-1]) != np.argmax(cst.EOM_VECTOR) and np.shape(new_sequence)[1] < 1000):
         character = sess.run(predicted_character,feed_dict={sequence_in:sequence,so_far_reconstructed:new_sequence})
@@ -858,7 +867,16 @@ if args.tuner:
         
         # Re-initialize tuning variable to something random to tune again
         sess.run(n_input.initializer)
+        
+# Print outputs of tuning
+for i in range(len(results)):
+    print('>sample{}'.format(i))
+    print(results[i])
+    if args.return_latents:
+        print(latents[i])
+print(subtypes)
 
+# For the option to pass a sequence through the VAE
 print('\n')
 print('Reconstruction')
 if args.reconstruct:
@@ -871,27 +889,17 @@ if args.reconstruct:
     except NameError:
         print('model not compatible with reconstruction')
 
-latent1 = np.array([-8.78616646e-02,2.54285127e-01,-2.39989594e-01,-2.56966859e-01,6.61173820e-01,2.65609562e-01,-5.62671125e-01,1.13751709e-01,2.80384094e-01,-2.46588394e-01,8.56676698e-03,-8.01984444e-02,-6.16456568e-01,5.48728347e-01,2.64586836e-01,9.16523859e-02,4.57099289e-01,1.89074099e-01,1.86758071e-01,-6.86501116e-02,2.45273337e-01,1.58737019e-01,-1.57438025e-01,3.63574661e-02,2.90591985e-01,-2.75255382e-01,3.59096259e-01,-8.34906846e-02,-1.39299601e-01,1.52063012e-01,1.00856319e-01,1.66754618e-01,1.14208512e-01,3.71811330e-01,1.60202459e-01,5.69860220e-01,-2.90873777e-02,3.68038476e-01,1.12610407e-01,3.35178137e-01,7.81247839e-02,1.40872642e-01,9.93680134e-02,-3.07024539e-01,4.21428591e-01,3.88146520e-01,-2.65082031e-01,-2.15322599e-01,5.26463747e-01,5.20111620e-01,-4.48422611e-01,-2.92156011e-01,7.88032636e-03,3.64912003e-01,1.57954916e-02,1.70940191e-01,-3.22309315e-01,-4.24387157e-01,2.87565976e-01,1.12168625e-01,-3.37853134e-01,5.37228510e-02,4.26308602e-01,-2.30144203e-01,-3.15926746e-02,-3.33032370e-01,4.76296902e-01,-1.42026067e-01,-2.99532473e-01,7.39579350e-02,-2.19608560e-01,3.37747149e-02,-1.17672689e-01,-1.69587210e-01,5.17762065e-01,2.50261545e-01,-2.43298784e-01,-1.30311667e-03,2.68177334e-02,-4.21793386e-02,-9.74674150e-02,-1.88970596e-01,1.91645309e-01,6.60884827e-02,-3.76344807e-02,-1.90046877e-01,-2.33416453e-01,-9.74612683e-02,-1.38587566e-05,-8.75953734e-02,8.02328289e-02,2.04630308e-02,-3.12964953e-02,2.74672091e-01,2.02791020e-01,4.60430145e-01,2.91427433e-01,-1.65472448e-01,2.48493195e-01,1.92133144e-01],dtype=np.float32)
-latent2 = np.array([-0.03270355,0.03946022,-0.04642215,0.05495419,0.0771457,0.51958895,-0.28585795,0.00070127,0.01797779,0.2698575,-0.13362812,-0.2636208,-0.06565533,0.3637063,0.25317386,0.29645896,0.15327702,0.18783416,-0.00382194,0.06740722,0.04744477,-0.25432673,-0.18908288,0.2732132,-0.12797353,0.03606429,-0.33432168,-0.4172894,-0.44882825,-0.2794896,-0.20246154,0.01508206,0.18074925,0.41876137,0.04188212,-0.08180775,0.24349701,-0.26878783,0.17448135,0.34058142,-0.27591175,0.11490995,-0.08870767,-0.06127287,-0.12378976,0.25667405,-0.05978367,0.33430743,-0.26534897,0.3766493,0.47101778,-0.02175809,0.05814211,0.4212924,0.01716817,0.0640059,-0.04441477,-0.0521503,-0.37863544,0.26898506,-0.21880047,-0.06928809,0.23115705,-0.4236487,0.00372865,0.2552795,0.10724288,0.23758915,0.0096574,0.29054835,-0.01176035,0.2462711,-0.0555782,0.389012,-0.31767932,0.34081706,0.24057971,-0.03324224,-0.05747395,-0.03615857,0.08025739,-0.17162405,-0.14984497,0.15114363,-0.06177906,0.08155174,0.01023227,0.3823118,0.03527178,0.05087311,0.28903526,-0.07757697,-0.28466088,0.391604,0.3605601,-0.3306399,0.00394653,-0.2758481,0.29160807,0.0163339],dtype=np.float32)
-diff = latent2 - latent1
-
-latent_increment = [0. for i in range(25)] + [0.2] + [0. for i in range(74)]
-latent_increment = np.array(latent_increment,dtype=np.float32)
-
-latents = []
-for i in [0,1,2,3,4,5,6]:
-    latents.append(latent1 + i*latent_increment)
-for latent in latents:
-    result = sess.run(decoder(np.reshape(latent,(1,latent_dim)),training=tf.constant(False)))[0]
-    print(cst.convert_to_string(result,ORDER))
-
-
-# Print outputs
-for i in range(len(results)):
-    print('>sample{}'.format(i))
-    print(results[i])
-    if args.return_latents:
-        print(latents[i])
-print(subtypes)
-
+# For the option to print sequences from latent_variables
+print('\n')
+print('Printing from latents')
+if args.print_from_latents:
+    latents = print_from_latents_parser(args.print_from_latents)
+    for latent in latents:
+        if args.model in ['vae_fc','vae_conv']:
+            result = sess.run(decoder(np.reshape(latent,(1,latent_dim)),training=tf.constant(False)))[0]
+            print(cst.convert_to_string(result,ORDER))
+        elif args.model == 'gan':
+            result = sess.run(generator(np.reshape(latent,(1,latent_dim)),training=tf.constant(False)))[0]
+            print(cst.convert_to_string(result,ORDER))
+            
 sess.close()
