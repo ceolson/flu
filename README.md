@@ -73,4 +73,4 @@ python generator.py \
 ```
 
 # Notes
-Some options are incompatible. For example, if you specify a saved predictor with `--restore_predictor` but your `--subtype` option doesn't need a predictor, this will result in an error.
+Some options are incompatible. For example, if you specify a saved predictor with `--restore_predictor` but your `--subtype` option doesn't need a predictor, this will result in an error. RNN cannot be tuned (in principle, this is done by including extra variables to states, but this is not implemented here).

@@ -1,7 +1,5 @@
-import deepchem as dc
 import numpy as np
 import tensorflow as tf
-from Bio import SeqIO
 import h5py
 import scipy
 import argparse
@@ -262,7 +260,6 @@ if args.model == 'vae_fc':
         x = lyr.batchnorm(x,'decoder.batchnorm4.offset','decoder.batchnorm4.scale','decoder.batchnorm4.average_means','decoder.batchnorm4.average_variances','decoder.num_means','decoder',(max_size*encode_length,),training=training)
         
         x = tf.reshape(x,[num,max_size,encode_length])
-        
         return x
         
 elif args.model == 'vae_conv':
@@ -660,12 +657,7 @@ def rec(sequence):
     
     return cst.convert_to_string(new_sequence[0],ORDER)
 
-# Apparently boolean tensors can be buggy, so initialize "training" explicitly
-# unless it is not defined (this happens with RNN)
-try:
-    sess.run(tf.global_variables_initializer(), {training: True})
-except NameError:
-    sess.run(tf.global_variables_initializer())
+sess.run(tf.global_variables_initializer())
 
 # Set up saving and restoring
 
@@ -882,11 +874,11 @@ print('Reconstruction')
 if args.reconstruct:
     print(args.reconstruct)
     encoded_original = cst.convert_to_encoding(args.reconstruct,CATEGORIES)
-    encoded_original = np.reshape(encoded_original,(1,max_size,encode_length))
+    encoded_original = np.expand_dims(encoded_original,axis=0)      # Need batch size of 1
     try:
-        encoded_reconstructed = sess.run(reconstruction,feed_dict={sequence_in:encoded_original,training:False})[0]
+        encoded_reconstructed = sess.run(reconstruction[0],feed_dict={sequence_in:encoded_original,training:False})
         print(cst.convert_to_string(encoded_reconstructed,ORDER))
-    except NameError:
+    except NameError:           # if not a vae_conv or vae_fc, reconstruction won't exist (and shouldn't)
         print('model not compatible with reconstruction')
 
 # For the option to print sequences from latent_variables

@@ -131,7 +131,7 @@ MKAILVVLLYTFATANADTLCIGYHANNSTDTVDTVLEKNVTVTHSVNLLEDKHNGKLCKLRGVAPLHLGKCNIAGWILG
 ```
 
 * Looking at what each one of the latent variables codes for is interesting. You can do this by starting with a latent code and changing it by some vector in latent space gradually and seeing what happens to the sequences. Note that with large latent spaces, a lot of the variables are probably useless so you have to find one that is actually salient. If you go slow enough, you can find residues that co-vary.
-* You can plot points in latent space against subtype to see if the subtypes cluster. You can do this by using [T-SNE](https://lvdmaaten.github.io/tsne/) to reduce the dimensionality of the latent space (or if you have a 2-dimensional latent space it's easy). 
+* You can plot points in latent space against subtype to see if the subtypes cluster. You can do this by using [t-SNE](https://lvdmaaten.github.io/tsne/) to reduce the dimensionality of the latent space (or if you have a 2-dimensional latent space it's easy). 
 
 Here is a plot with a two-dimensional latent space where the subtypes cluster nicely. This doesn't always happen.
 

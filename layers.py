@@ -34,8 +34,8 @@ def batchnorm(sequence,offset_name,scale_name,average_means_name,average_varianc
     def if_not_training():
         means = average_means
         variances = average_variances
-        return means,variances,0.,0.,0.     # 0s are to placehold for temp1,temp2,temp3 that would be returned if training
-    
+        return average_means,average_variances,0.,0.,0.     # 0s are to placehold for temp1,temp2,temp3 that would be returned if training
+
     means,variances,temp1,temp2,temp3 = tf.cond(training,if_training,if_not_training)
 
     with tf.control_dependencies([temp1,temp2,temp3]):      # Update population statistics
